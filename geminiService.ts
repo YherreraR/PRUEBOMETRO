@@ -1,4 +1,5 @@
 
+// Use the Google GenAI SDK for math evaluation generation tasks.
 import { GoogleGenAI, Type } from "@google/genai";
 import { Grade, Strand, AssessmentType, OA, EvaluationContent, GroundingSource } from './types';
 
@@ -9,6 +10,7 @@ export async function generateEvaluation(
   type: AssessmentType,
   customContext: string
 ): Promise<EvaluationContent> {
+  // Always initialize GoogleGenAI with the API key from process.env.API_KEY.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
@@ -40,8 +42,9 @@ export async function generateEvaluation(
     Responde estrictamente en formato JSON según el esquema definido.
   `;
 
+  // Use gemini-3-pro-preview for complex reasoning tasks like math content generation.
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: prompt,
     config: {
       tools: [{ googleSearch: {} }],
@@ -71,7 +74,8 @@ export async function generateEvaluation(
               properties: {
                 title: { type: Type.STRING },
                 content: { type: Type.STRING }
-              }
+              },
+              required: ['title', 'content']
             }
           }
         },
@@ -80,10 +84,11 @@ export async function generateEvaluation(
     }
   });
 
+  // Extract text content directly from the text property.
   const text = response.text;
   const parsed = JSON.parse(text || '{}');
   
-  // Extraer fuentes de búsqueda para transparencia
+  // Extract URLs from groundingChunks as required when using googleSearch.
   const sources: GroundingSource[] = [];
   const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
   if (chunks) {
