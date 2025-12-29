@@ -82,14 +82,16 @@ const App: React.FC = () => {
   };
 
   const handlePrint = () => {
-    window.print();
+    if (evaluation) {
+      window.print();
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       {/* Persistant Visible Notification System */}
       {error && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 no-print animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 no-print animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="bg-white border-l-4 border-rose-600 rounded-xl shadow-2xl p-4 flex items-start gap-4 ring-1 ring-black/5">
             <div className="shrink-0 w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center text-rose-600">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -112,9 +114,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <div className="no-print">
-        <Header />
-      </div>
+      <Header onPrint={handlePrint} hasEvaluation={!!evaluation} />
 
       <main className="flex-1 container mx-auto px-4 py-8 flex flex-col lg:flex-row gap-8 max-w-7xl">
         {/* Left Sidebar: Controls */}
@@ -260,7 +260,12 @@ const App: React.FC = () => {
                 </div>
               </div>
             ) : evaluation ? (
-              <DocumentPreview evaluation={evaluation} settings={settings} isEditable={true} />
+              <DocumentPreview 
+                evaluation={evaluation} 
+                settings={settings} 
+                isEditable={true} 
+                onSettingsChange={setSettings}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center p-20 text-center space-y-6 bg-white/50 border-2 border-dashed border-slate-300 rounded-3xl w-full max-w-[8.5in]">
                 <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center text-slate-300 shadow-inner">
