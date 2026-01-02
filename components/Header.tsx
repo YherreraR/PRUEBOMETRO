@@ -3,12 +3,12 @@ import React, { useState } from 'react';
 
 interface Props {
   onExportPDF: () => void;
-  onExportText: () => void;
+  onExportWord: () => void;
   onCopyText: () => void;
   hasEvaluation: boolean;
 }
 
-const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEvaluation }) => {
+const Header: React.FC<Props> = ({ onExportPDF, onExportWord, onCopyText, hasEvaluation }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
   return (
@@ -19,12 +19,13 @@ const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEva
             <span className="text-xl font-black">π</span>
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-900 leading-tight tracking-tight uppercase">EvalMat Chile</h1>
+            <h1 className="text-lg font-black text-slate-900 leading-tight tracking-tight uppercase">EvaluApp</h1>
             <p className="text-[10px] text-indigo-600 font-black uppercase tracking-widest hidden sm:block">Alineado a Currículum Nacional 🇨🇱</p>
           </div>
         </div>
         
-        <div className="relative">
+        {/* Z-Index 50 agregado para estar sobre el overlay de cierre */}
+        <div className="relative z-50">
           <button 
             onClick={() => setShowExportMenu(!showExportMenu)}
             disabled={!hasEvaluation}
@@ -50,7 +51,11 @@ const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEva
               </div>
               
               <button 
-                onClick={() => { onExportPDF(); setShowExportMenu(false); }}
+                onClick={(e) => { 
+                  e.stopPropagation();
+                  onExportPDF(); 
+                  setShowExportMenu(false); 
+                }}
                 className="w-full px-5 py-4 text-left hover:bg-indigo-50 flex items-center gap-4 group transition-colors"
               >
                 <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-all">
@@ -59,13 +64,17 @@ const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEva
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black text-slate-800">Exportar PDF</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Usa la opción "Guardar como PDF"</p>
+                  <p className="text-sm font-black text-slate-800">Imprimir / PDF</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Guardar como PDF o Imprimir</p>
                 </div>
               </button>
 
               <button 
-                onClick={() => { onExportText(); setShowExportMenu(false); }}
+                onClick={(e) => { 
+                  e.stopPropagation();
+                  onExportWord(); 
+                  setShowExportMenu(false); 
+                }}
                 className="w-full px-5 py-4 text-left hover:bg-indigo-50 border-t border-slate-50 flex items-center gap-4 group transition-colors"
               >
                 <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl group-hover:bg-indigo-600 group-hover:text-white transition-all">
@@ -74,13 +83,17 @@ const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEva
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-black text-slate-800">Descargar Texto (.txt)</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Archivo editable estructurado</p>
+                  <p className="text-sm font-black text-slate-800">Descargar Word (.doc)</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Documento editable completo</p>
                 </div>
               </button>
 
               <button 
-                onClick={() => { onCopyText(); setShowExportMenu(false); }}
+                onClick={(e) => { 
+                  e.stopPropagation();
+                  onCopyText(); 
+                  setShowExportMenu(false); 
+                }}
                 className="w-full px-5 py-4 text-left hover:bg-emerald-50 border-t border-slate-50 flex items-center gap-4 group transition-colors"
               >
                 <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-all">
@@ -91,7 +104,7 @@ const Header: React.FC<Props> = ({ onExportPDF, onExportText, onCopyText, hasEva
                 </div>
                 <div>
                   <p className="text-sm font-black text-slate-800">Copiar Texto</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Pegar directamente en Word</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Pegar directamente en otro lado</p>
                 </div>
               </button>
             </div>

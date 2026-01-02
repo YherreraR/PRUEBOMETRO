@@ -4,9 +4,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Generador de Evaluaciones Matemáticas - Chile</title>
+    <title>EvaluApp: Generador de Evaluaciones Matemáticas - Chile</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Roboto+Mono&display=swap" rel="stylesheet">
+    
+    <!-- MathJax Configuration -->
     <script>
       window.MathJax = {
         tex: {
@@ -20,9 +22,29 @@
       };
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <!-- MathLive for Visual Editing -->
+    <script src="//unpkg.com/mathlive"></script>
+
     <style>
       body {
         font-family: 'Inter', sans-serif;
+      }
+      
+      /* MathLive Customization */
+      math-field {
+        font-size: 1.2rem;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        background-color: white;
+        width: 100%;
+        border: 1px solid #e2e8f0;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+      math-field:focus-within {
+        outline: none;
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
       }
       
       @media print {
@@ -30,23 +52,25 @@
           size: A4;
           margin: 0;
         }
-        body {
+        body * {
+          visibility: hidden;
+        }
+        #printable-eval, #printable-eval * {
+          visibility: visible;
+        }
+        #printable-eval {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 20mm !important; /* Margen seguro para impresión */
+          box-shadow: none !important;
           background-color: white !important;
-          -webkit-print-color-adjust: exact;
+          border: none !important;
         }
         .no-print {
           display: none !important;
-        }
-        .print-only {
-          display: block !important;
-        }
-        .shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm, .shadow {
-          box-shadow: none !important;
-        }
-        [contenteditable]:focus {
-          outline: none !important;
         }
       }
 
@@ -80,6 +104,7 @@
     "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
     "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
     "marked": "https://esm.sh/marked@^17.0.1",
+    "katex": "https://esm.sh/katex@0.16.9",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/"
   }

@@ -1,5 +1,7 @@
 {
-  "name": "Generador de Evaluaciones Matemáticas Chile",
+  "name": "EvaluApp",
   "description": "Herramienta avanzada para docentes chilenos que genera evaluaciones de matemática alineadas al Currículum Nacional y el Decreto 67, con enfoque en evaluación formativa.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

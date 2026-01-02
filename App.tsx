@@ -3,6 +3,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Grade, Strand, AssessmentType, OA, DocumentSettings, EvaluationContent } from './types';
 import { CURRICULUM_OAS } from './constants';
 import { generateEvaluation } from './geminiService';
+import { marked } from 'marked'; // Importación necesaria para convertir Markdown a HTML para Word
+import { processMathForWord } from './mathUtils';
 
 // Component Imports
 import Header from './components/Header';
@@ -18,11 +20,14 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<EvaluationContent | null>(null);
   const [isFileProtocol, setIsFileProtocol] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
   useEffect(() => {
+    // Detectamos si el usuario abrió el archivo con doble clic (file://)
     if (window.location.protocol === 'file:') {
       setIsFileProtocol(true);
+      setShowHelp(true);
     }
   }, []);
 
@@ -59,8 +64,8 @@ const App: React.FC = () => {
   }, [selectedOAId]);
 
   const [settings, setSettings] = useState<DocumentSettings>({
-    schoolName: 'Nombre de tu Colegio',
-    teacherName: 'Nombre del Docente',
+    schoolName: 'Escuela Las Quezadas',
+    teacherName: 'YherreraR MaT',
     subject: 'Matemática',
     showInstructions: true,
     fontSize: 'text-base',
@@ -73,6 +78,10 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
+    if (isFileProtocol) {
+      setShowHelp(true);
+      return;
+    }
     if (!selectedOA) {
       setError('Por favor selecciona un Objetivo de Aprendizaje.');
       return;
@@ -97,82 +106,203 @@ const App: React.FC = () => {
     }
   };
 
-  const getEvaluationText = () => {
-    if (!evaluation) return "";
-    return `
-${evaluation.title.toUpperCase()}
-==========================================
-Colegio: ${settings.schoolName}
-Docente: ${settings.teacherName}
-Asignatura: ${settings.subject}
-Curso: ${grade}
-Instrumento: ${type}
-
-ALINEACIÓN CURRICULAR
-------------------------------------------
-OA: ${evaluation.oa_code}
-Descripción: ${evaluation.oa_description}
-
-HABILIDADES Y ACTITUDES
-------------------------------------------
-Habilidades: ${evaluation.skills.join(', ')}
-Actitudes: ${evaluation.attitudes.join('; ')}
-
-INDICADORES DE LOGRO
-------------------------------------------
-${evaluation.indicators.map((ind, i) => `${i + 1}. ${ind}`).join('\n')}
-
-DESARROLLO DE LA EVALUACIÓN
-------------------------------------------
-${evaluation.sections.map(sec => `
-## ${sec.title}
-${sec.content}
-`).join('\n')}
-
-------------------------------------------
-Generado por EvalMat Chile v2.0
-    `.trim();
-  };
-
   const handleCopyToClipboard = () => {
-    const text = getEvaluationText();
+    if (!evaluation) return;
+    const text = `Evaluación: ${evaluation.title}\n\n${evaluation.sections.map(s => s.title + '\n' + s.content).join('\n\n')}`;
     navigator.clipboard.writeText(text).then(() => {
-      showToast("Contenido copiado al portapapeles. ¡Ya puedes pegarlo en Word!");
+      showToast("Contenido copiado al portapapeles.");
     });
   };
 
-  const handleExportText = () => {
+  const handleExportWord = async () => {
+    if (isFileProtocol) {
+      setShowHelp(true);
+      return;
+    }
     if (!evaluation) return;
-    const content = getEvaluationText();
-    const filename = `Evaluacion_${evaluation.oa_code.replace(/\s+/g, '_')}.txt`;
 
     try {
-      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      // 1. Convertir secciones de Markdown a HTML, procesando antes la matemática a MathML
+      const sectionPromises = evaluation.sections.map(async (sec) => {
+        // Usamos la utilidad robusta mathUtils.ts
+        const contentWithMathML = processMathForWord(sec.content);
+        const htmlContent = await marked.parse(contentWithMathML);
+        
+        let imageHtml = '';
+        if (sec.image) {
+          imageHtml = `<div style="text-align: center; margin: 15px 0;"><img src="${sec.image}" style="max-width: 400px; max-height: 300px;" /></div>`;
+        }
+
+        return `
+          <div style="margin-bottom: 20px;">
+            <h3 style="color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px;">${sec.title}</h3>
+            ${imageHtml}
+            <div>${htmlContent}</div>
+          </div>
+        `;
+      });
+      
+      const sectionsHtmlArray = await Promise.all(sectionPromises);
+      const sectionsHtml = sectionsHtmlArray.join('');
+
+      // 2. Construir el documento HTML completo compatible con Word
+      const docContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+              xmlns:w='urn:schemas-microsoft-com:office:word' 
+              xmlns:m='http://schemas.microsoft.com/office/2004/12/omml'
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8">
+          <title>${evaluation.title}</title>
+          <style>
+            body { font-family: 'Calibri', 'Arial', sans-serif; font-size: 11pt; line-height: 1.5; color: #000; }
+            h1 { font-size: 18pt; color: #1a237e; text-align: center; text-transform: uppercase; margin-bottom: 5px; }
+            h2 { font-size: 14pt; color: #283593; margin-top: 20px; border-bottom: 2px solid #283593; padding-bottom: 5px; }
+            h3 { font-size: 12pt; font-weight: bold; color: #333; margin-top: 15px; }
+            p { margin-bottom: 10px; }
+            table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+            th, td { border: 1px solid #999; padding: 8px; text-align: left; vertical-align: top; }
+            th { background-color: #f0f0f0; font-weight: bold; }
+            .header-info { margin-bottom: 30px; border: 1px solid #ccc; padding: 15px; background-color: #fafafa; }
+            .meta-item { margin-bottom: 5px; }
+            ul { margin-top: 5px; padding-left: 20px; }
+            li { margin-bottom: 3px; }
+          </style>
+        </head>
+        <body>
+          <div class="header-info">
+            <p class="meta-item"><strong>Establecimiento:</strong> ${settings.schoolName}</p>
+            <p class="meta-item"><strong>Docente:</strong> ${settings.teacherName}</p>
+            <p class="meta-item"><strong>Asignatura:</strong> ${settings.subject} | <strong>Curso:</strong> ${grade}</p>
+            <p class="meta-item"><strong>Fecha:</strong> ____________________</p>
+          </div>
+
+          <h1>${evaluation.title}</h1>
+          <p style="text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px;">Instrumento generado con EvaluApp</p>
+
+          <div style="background-color: #e8eaf6; padding: 15px; border-left: 5px solid #3f51b5; margin-bottom: 25px;">
+             <p><strong>Objetivo de Aprendizaje (OA):</strong> ${evaluation.oa_code}</p>
+             <p><em>${evaluation.oa_description}</em></p>
+          </div>
+
+          <h2>Indicadores de Evaluación</h2>
+          <ul>
+            ${evaluation.indicators.map(ind => `<li>${ind}</li>`).join('')}
+          </ul>
+
+          <h2>Habilidades y Actitudes</h2>
+          <p><strong>Habilidades:</strong> ${evaluation.skills.join(', ')}</p>
+          <p><strong>Actitudes:</strong> ${evaluation.attitudes.join(', ')}</p>
+
+          <h2>Desarrollo de la Evaluación</h2>
+          ${sectionsHtml}
+
+          <br/><br/>
+          <hr/>
+          <p style="text-align: center; font-size: 9pt; color: #999;">Fin del documento</p>
+        </body>
+        </html>
+      `;
+
+      // 3. Crear el Blob y descargar
+      const blob = new Blob(['\ufeff', docContent], {
+        type: 'application/msword'
+      });
+      
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', filename);
-      link.style.display = 'none';
+      // Usamos .doc para mejor compatibilidad al abrir en Word (HTML format)
+      link.setAttribute('download', `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.doc`);
       document.body.appendChild(link);
       link.click();
       
-      // Respaldo para navegadores que bloquean descargas instantáneas
+      // Limpieza
       setTimeout(() => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
       }, 100);
-      
-      showToast("Iniciando descarga del archivo...");
+
+      showToast("Evaluación descargada en Word (.doc)", "success");
     } catch (e) {
-      handleCopyToClipboard();
+      console.error(e);
+      showToast("Error al generar el archivo Word", "error");
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* BANNER DE ADVERTENCIA PROTOCOLO LOCAL */}
       {isFileProtocol && (
-        <div className="bg-amber-600 text-white p-3 text-center text-xs font-black no-print">
-          ⚠️ MODO LOCAL DETECTADO: Para que las descargas e IA funcionen, debes subir los archivos a un servidor o usar "Live Server" en VS Code.
+        <div className="bg-rose-600 text-white p-3 shadow-lg no-print sticky top-0 z-[60]">
+          <div className="container mx-auto px-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 p-1.5 rounded-lg animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <p className="text-xs font-black uppercase tracking-tight leading-tight">
+                La Inteligencia Artificial está desactivada porque has abierto el archivo localmente.
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowHelp(true)}
+              className="bg-white text-rose-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 transition-colors shadow-sm whitespace-nowrap"
+            >
+              Solucionar en VS Code
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIGURACIÓN PASO A PASO */}
+      {showHelp && isFileProtocol && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+            <div className="bg-indigo-600 p-10 text-white relative">
+              <button onClick={() => setShowHelp(false)} className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-white/20 rounded-2xl">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black uppercase tracking-tighter leading-none">Guía de Inicio</h2>
+                  <p className="text-indigo-100 text-sm font-bold opacity-80 mt-1">Cómo ejecutar EvaluApp en VS Code</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-10 grid grid-cols-1 md:grid-cols-3 gap-8 bg-white">
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-400 text-xl">1</div>
+                <h4 className="font-black text-slate-800 text-xs uppercase tracking-widest leading-tight">Abrir en VS Code</h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Abre la carpeta que contiene los archivos desde el menú <b>File > Open Folder</b>.</p>
+              </div>
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center font-black text-indigo-400 text-xl">2</div>
+                <h4 className="font-black text-indigo-800 text-xs uppercase tracking-widest leading-tight">Instalar Live Server</h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Busca <b>"Live Server"</b> en la pestaña de extensiones (icono de cuadritos) e instálalo.</p>
+              </div>
+              <div className="space-y-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center font-black text-emerald-400 text-xl">3</div>
+                <h4 className="font-black text-emerald-800 text-xs uppercase tracking-widest leading-tight">Click en Go Live</h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed font-medium">Abre <code>index.html</code> y pulsa <b>"Go Live"</b> en la barra inferior derecha de VS Code.</p>
+              </div>
+            </div>
+            <div className="px-10 pb-10">
+              <button 
+                onClick={() => setShowHelp(false)}
+                className="w-full py-5 bg-slate-900 text-white rounded-3xl font-black text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-xl active:scale-95"
+              >
+                He seguido los pasos, continuar
+              </button>
+              <p className="text-center mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Esto es necesario para habilitar la IA por seguridad del navegador</p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -185,7 +315,7 @@ Generado por EvalMat Chile v2.0
       )}
 
       {error && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 no-print">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 no-print">
           <div className="bg-white border-l-4 border-rose-600 rounded-xl shadow-2xl p-4 flex items-start gap-4">
             <div className="shrink-0 text-rose-600">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,7 +333,7 @@ Generado por EvalMat Chile v2.0
 
       <Header 
         onExportPDF={handleExportPDF} 
-        onExportText={handleExportText} 
+        onExportWord={handleExportWord} 
         onCopyText={handleCopyToClipboard}
         hasEvaluation={!!evaluation} 
       />

@@ -59,6 +59,9 @@ export interface EvaluationContent {
   sections: Array<{
     title: string;
     content: string; // Markdown format
+    weight?: string; // Puntaje o ponderación
+    image?: string; // Base64 string or URL
+    imageCaption?: string;
   }>;
   indicators: string[];
   sources?: GroundingSource[];
