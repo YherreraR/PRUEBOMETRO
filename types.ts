@@ -42,7 +42,7 @@ export interface DocumentSettings {
   subject: string;
   showInstructions: boolean;
   fontSize: 'text-xs' | 'text-sm' | 'text-base' | 'text-lg' | 'text-xl';
-  headerColor: string;
+  headerColor: string; // Se mantiene por compatibilidad, pero la Template tendrá prioridad en estilos visuales
 }
 
 export interface GroundingSource {
@@ -65,4 +65,20 @@ export interface EvaluationContent {
   }>;
   indicators: string[];
   sources?: GroundingSource[];
+}
+
+// --- NUEVAS INTERFACES PARA PLANTILLAS ---
+
+export type HeaderLayout = 'simple' | 'logo-left' | 'logo-right' | 'logo-center' | 'double-column';
+
+export interface AssessmentTemplate {
+  id: string;
+  name: string;
+  headerLayout: HeaderLayout;
+  logoUrl?: string; // Base64 del logo del colegio
+  docxFile?: string; // Base64 del archivo .docx subido por el usuario
+  primaryColor: string;
+  fontFamily: 'Inter' | 'Arial' | 'Times New Roman' | 'Calibri';
+  showBorder: boolean; // Borde alrededor de la página
+  schoolInfoAlignment: 'left' | 'center' | 'right';
 }

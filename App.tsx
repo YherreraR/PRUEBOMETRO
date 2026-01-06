@@ -1,15 +1,21 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Grade, Strand, AssessmentType, OA, DocumentSettings, EvaluationContent } from './types';
+import { Grade, Strand, AssessmentType, OA, DocumentSettings, EvaluationContent, AssessmentTemplate } from './types';
 import { CURRICULUM_OAS } from './constants';
 import { generateEvaluation } from './geminiService';
-import { marked } from 'marked'; // Importación necesaria para convertir Markdown a HTML para Word
+import { marked } from 'marked'; 
 import { processMathForWord } from './mathUtils';
+
+// Libraries for Word Generation
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import FileSaver from 'file-saver';
 
 // Component Imports
 import Header from './components/Header';
 import ConfigSidebar from './components/ConfigSidebar';
 import DocumentPreview from './components/DocumentPreview';
+import TemplateManager from './components/TemplateManager';
 
 const App: React.FC = () => {
   const [grade, setGrade] = useState<Grade>(Grade.G7);
@@ -22,6 +28,17 @@ const App: React.FC = () => {
   const [isFileProtocol, setIsFileProtocol] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  // Default Template Initialization
+  const [currentTemplate, setCurrentTemplate] = useState<AssessmentTemplate>({
+    id: 'default',
+    name: 'Estándar EvaluApp',
+    headerLayout: 'simple',
+    primaryColor: '#4f46e5',
+    fontFamily: 'Inter',
+    showBorder: false,
+    schoolInfoAlignment: 'left'
+  });
 
   useEffect(() => {
     // Detectamos si el usuario abrió el archivo con doble clic (file://)
@@ -122,9 +139,59 @@ const App: React.FC = () => {
     if (!evaluation) return;
 
     try {
-      // 1. Convertir secciones de Markdown a HTML, procesando antes la matemática a MathML
+      // --- OPCIÓN A: PLANTILLA DOCX PERSONALIZADA ---
+      if (currentTemplate.docxFile) {
+        // 1. Decodificar Base64 a ArrayBuffer (o binary string para PizZip)
+        const binaryString = window.atob(currentTemplate.docxFile.split(',')[1]);
+        const zip = new PizZip(binaryString);
+        
+        // 2. Inicializar Docxtemplater
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+        });
+
+        // 3. Preparar datos limpios (sin Markdown complejo, ya que docxtemplater básico no soporta HTML/RichText)
+        // Nota: Las fórmulas matemáticas LaTeX ($...$) se pasarán como texto plano para que el usuario las visualice o edite con un plugin en Word.
+        const cleanSections = evaluation.sections.map(sec => ({
+           title: sec.title,
+           content: sec.content.replace(/\*\*/g, '').replace(/__/g, ''), // Limpieza básica de Markdown
+           weight: sec.weight
+        }));
+
+        const data = {
+          title: evaluation.title,
+          schoolName: settings.schoolName,
+          teacherName: settings.teacherName,
+          subject: settings.subject,
+          grade: grade,
+          oa_code: evaluation.oa_code,
+          oa_description: evaluation.oa_description,
+          indicators: evaluation.indicators,
+          sections: cleanSections
+        };
+
+        // 4. Renderizar
+        doc.render(data);
+
+        // 5. Generar Blob
+        const out = doc.getZip().generate({
+          type: "blob",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        });
+
+        // 6. Guardar
+        // Manejar importación de FileSaver que puede ser default function o objeto
+        const saveAs = (FileSaver as any).saveAs || FileSaver;
+        saveAs(out, `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.docx`);
+        showToast("Documento generado con plantilla personalizada (.docx)", "success");
+        return;
+      }
+
+      // --- OPCIÓN B: GENERACIÓN HTML (FAKE WORD) ---
+      // (Mantiene la fidelidad matemática usando MathML)
+      
       const sectionPromises = evaluation.sections.map(async (sec) => {
-        // Usamos la utilidad robusta mathUtils.ts
         const contentWithMathML = processMathForWord(sec.content);
         const htmlContent = await marked.parse(contentWithMathML);
         
@@ -145,7 +212,59 @@ const App: React.FC = () => {
       const sectionsHtmlArray = await Promise.all(sectionPromises);
       const sectionsHtml = sectionsHtmlArray.join('');
 
-      // 2. Construir el documento HTML completo compatible con Word
+      let headerHtml = '';
+      const logoImg = currentTemplate.logoUrl ? `<img src="${currentTemplate.logoUrl}" width="80" height="80" />` : '';
+      
+      const schoolInfo = `
+        <p class="meta-item"><strong>${settings.schoolName}</strong></p>
+        <p class="meta-item">Docente: ${settings.teacherName}</p>
+        <p class="meta-item">Asignatura: ${settings.subject} | Curso: ${grade}</p>
+        <p class="meta-item">Fecha: ____________________</p>
+      `;
+
+      if (currentTemplate.headerLayout === 'logo-left') {
+        headerHtml = `
+          <table style="width: 100%; margin-bottom: 20px; border: none;">
+            <tr>
+              <td style="width: 100px; vertical-align: middle; padding-right: 15px;">${logoImg}</td>
+              <td style="vertical-align: middle; text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</td>
+            </tr>
+          </table>
+        `;
+      } else if (currentTemplate.headerLayout === 'logo-right') {
+        headerHtml = `
+          <table style="width: 100%; margin-bottom: 20px; border: none;">
+            <tr>
+              <td style="vertical-align: middle; text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</td>
+              <td style="width: 100px; vertical-align: middle; text-align: right; padding-left: 15px;">${logoImg}</td>
+            </tr>
+          </table>
+        `;
+      } else if (currentTemplate.headerLayout === 'logo-center') {
+        headerHtml = `
+          <div style="text-align: center; margin-bottom: 20px;">
+            <div style="margin-bottom: 10px;">${logoImg}</div>
+            <div>${schoolInfo}</div>
+          </div>
+        `;
+      } else if (currentTemplate.headerLayout === 'double-column') {
+         headerHtml = `
+          <table style="width: 100%; margin-bottom: 20px; border-bottom: 2px solid ${currentTemplate.primaryColor};">
+            <tr>
+              <td style="vertical-align: top;">${logoImg}<br/><strong>${settings.schoolName}</strong></td>
+              <td style="vertical-align: top; text-align: right;">
+                 <p>Prof: ${settings.teacherName}</p>
+                 <p>${grade} | ${settings.subject}</p>
+              </td>
+            </tr>
+          </table>
+        `;
+      } else {
+        headerHtml = `<div class="header-info" style="text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</div>`;
+      }
+
+      const pageBorder = currentTemplate.showBorder ? `border: 1px solid ${currentTemplate.primaryColor}; padding: 30px;` : '';
+
       const docContent = `
         <html xmlns:o='urn:schemas-microsoft-com:office:office' 
               xmlns:w='urn:schemas-microsoft-com:office:word' 
@@ -155,32 +274,32 @@ const App: React.FC = () => {
           <meta charset="utf-8">
           <title>${evaluation.title}</title>
           <style>
-            body { font-family: 'Calibri', 'Arial', sans-serif; font-size: 11pt; line-height: 1.5; color: #000; }
-            h1 { font-size: 18pt; color: #1a237e; text-align: center; text-transform: uppercase; margin-bottom: 5px; }
-            h2 { font-size: 14pt; color: #283593; margin-top: 20px; border-bottom: 2px solid #283593; padding-bottom: 5px; }
-            h3 { font-size: 12pt; font-weight: bold; color: #333; margin-top: 15px; }
-            p { margin-bottom: 10px; }
-            table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-            th, td { border: 1px solid #999; padding: 8px; text-align: left; vertical-align: top; }
+            body { 
+              font-family: '${currentTemplate.fontFamily}', sans-serif; 
+              font-size: 11pt; 
+              line-height: 1.3; 
+              color: #000;
+              ${pageBorder}
+            }
+            h1 { font-size: 16pt; color: ${currentTemplate.primaryColor}; text-align: center; text-transform: uppercase; margin-bottom: 5px; margin-top: 0; }
+            h2 { font-size: 13pt; color: ${currentTemplate.primaryColor}; margin-top: 15px; border-bottom: 1px solid ${currentTemplate.primaryColor}; padding-bottom: 3px; }
+            h3 { font-size: 11pt; font-weight: bold; color: #333; margin-top: 10px; }
+            p { margin-bottom: 5px; margin-top: 0; }
+            table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+            th, td { border: 1px solid #999; padding: 5px; text-align: left; vertical-align: top; }
             th { background-color: #f0f0f0; font-weight: bold; }
-            .header-info { margin-bottom: 30px; border: 1px solid #ccc; padding: 15px; background-color: #fafafa; }
-            .meta-item { margin-bottom: 5px; }
+            .header-info { margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; background-color: #fafafa; }
             ul { margin-top: 5px; padding-left: 20px; }
             li { margin-bottom: 3px; }
           </style>
         </head>
         <body>
-          <div class="header-info">
-            <p class="meta-item"><strong>Establecimiento:</strong> ${settings.schoolName}</p>
-            <p class="meta-item"><strong>Docente:</strong> ${settings.teacherName}</p>
-            <p class="meta-item"><strong>Asignatura:</strong> ${settings.subject} | <strong>Curso:</strong> ${grade}</p>
-            <p class="meta-item"><strong>Fecha:</strong> ____________________</p>
-          </div>
+          ${headerHtml}
 
           <h1>${evaluation.title}</h1>
-          <p style="text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px;">Instrumento generado con EvaluApp</p>
+          <p style="text-align: center; font-size: 9pt; color: #666; margin-bottom: 20px;">Instrumento generado con EvaluApp</p>
 
-          <div style="background-color: #e8eaf6; padding: 15px; border-left: 5px solid #3f51b5; margin-bottom: 25px;">
+          <div style="background-color: #f8f9fa; padding: 10px; border-left: 4px solid ${currentTemplate.primaryColor}; margin-bottom: 20px;">
              <p><strong>Objetivo de Aprendizaje (OA):</strong> ${evaluation.oa_code}</p>
              <p><em>${evaluation.oa_description}</em></p>
           </div>
@@ -190,21 +309,16 @@ const App: React.FC = () => {
             ${evaluation.indicators.map(ind => `<li>${ind}</li>`).join('')}
           </ul>
 
-          <h2>Habilidades y Actitudes</h2>
-          <p><strong>Habilidades:</strong> ${evaluation.skills.join(', ')}</p>
-          <p><strong>Actitudes:</strong> ${evaluation.attitudes.join(', ')}</p>
-
           <h2>Desarrollo de la Evaluación</h2>
           ${sectionsHtml}
 
           <br/><br/>
           <hr/>
-          <p style="text-align: center; font-size: 9pt; color: #999;">Fin del documento</p>
+          <p style="text-align: center; font-size: 8pt; color: #999;">Fin del documento</p>
         </body>
         </html>
       `;
 
-      // 3. Crear el Blob y descargar
       const blob = new Blob(['\ufeff', docContent], {
         type: 'application/msword'
       });
@@ -212,12 +326,10 @@ const App: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      // Usamos .doc para mejor compatibilidad al abrir en Word (HTML format)
       link.setAttribute('download', `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.doc`);
       document.body.appendChild(link);
       link.click();
       
-      // Limpieza
       setTimeout(() => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
@@ -414,6 +526,7 @@ const App: React.FC = () => {
           </section>
 
           <ConfigSidebar settings={settings} setSettings={setSettings} />
+          <TemplateManager currentTemplate={currentTemplate} onTemplateChange={setCurrentTemplate} />
         </div>
 
         <div className="flex-1 space-y-4">
@@ -427,9 +540,11 @@ const App: React.FC = () => {
             ) : evaluation ? (
               <DocumentPreview 
                 evaluation={evaluation} 
-                settings={settings} 
+                settings={settings}
+                template={currentTemplate} // Pasamos la plantilla seleccionada
                 isEditable={true} 
                 onSettingsChange={setSettings}
+                onEvaluationChange={setEvaluation}
               />
             ) : (
               <div className="p-20 bg-white/50 border-4 border-dashed border-slate-300 rounded-[2rem] w-full max-w-[210mm] flex flex-col items-center justify-center text-center">

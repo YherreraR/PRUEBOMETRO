@@ -1,20 +1,26 @@
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { EvaluationContent, DocumentSettings } from '../types';
+import { EvaluationContent, DocumentSettings, AssessmentTemplate } from '../types';
 import { marked } from 'marked';
 import { generateEducationalImage } from '../geminiService';
 
 interface Props {
   evaluation: EvaluationContent;
   settings: DocumentSettings;
+  template?: AssessmentTemplate;
   isEditable?: boolean;
   onSettingsChange?: (settings: DocumentSettings) => void;
+  onEvaluationChange?: (evaluation: EvaluationContent) => void;
 }
 
-// Declaración para evitar errores de TS con window
+// Declaración para evitar errores de TS con window y elementos personalizados
 declare global {
   interface Window {
     MathJax: any;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'math-field': any;
+    }
   }
 }
 
@@ -89,10 +95,11 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
     }
   }, [syncedLatex]);
 
+  // Configuración de listeners del Web Component
   useEffect(() => {
     const mf = mfRef.current;
     if (mf) {
-      mf.smartMode = true;
+      mf.smartMode = true; 
       
       const handleInput = (evt: any) => {
         const value = evt.target.value;
@@ -148,7 +155,7 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
   const isSyncing = syncedLatex !== null;
 
   return (
-    <div className={`sticky top-4 z-30 bg-white/95 backdrop-blur-sm border rounded-2xl shadow-xl p-4 mb-8 no-print transition-all ring-1 ${isSyncing ? 'border-emerald-500 ring-emerald-100' : 'border-indigo-100 ring-indigo-50/50'}`}>
+    <div className={`sticky top-0 z-30 bg-white/95 backdrop-blur-md border rounded-2xl shadow-xl p-4 mb-8 no-print transition-all ring-1 transform -translate-y-2 ${isSyncing ? 'border-emerald-500 ring-emerald-100 shadow-emerald-100' : 'border-indigo-100 ring-indigo-50/50 shadow-indigo-100'}`}>
       <div className="flex justify-between items-center mb-3">
         <h4 className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 ${isSyncing ? 'text-emerald-600' : 'text-indigo-600'}`}>
           <span className={`p-1.5 rounded-lg ${isSyncing ? 'bg-emerald-100 animate-pulse' : 'bg-indigo-100'}`}>
@@ -164,7 +171,7 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
           </span>
           {isSyncing ? 'Editando Fórmula' : 'Editor Visual Matemático'}
         </h4>
-        <div className="flex gap-1 overflow-x-auto pb-1">
+        <div className="flex gap-1 overflow-x-auto pb-1 hide-scrollbar">
           {[
             { label: '÷', cmd: '\\frac{#@}{#?}', title: 'Fracción' },
             { label: '√', cmd: '\\sqrt{#@}', title: 'Raíz' },
@@ -188,7 +195,6 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
       
       <div className="flex gap-3 items-stretch">
         <div className="flex-1 relative group">
-           {/* @ts-ignore - MathLive custom element */}
            <math-field 
              ref={mfRef} 
              style={{ 
@@ -232,32 +238,25 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
           )}
         </button>
       </div>
-      {isSyncing && (
-         <p className="text-[10px] text-emerald-600 mt-2 font-medium text-center">
-           Editando en tiempo real.
-         </p>
-      )}
     </div>
   );
 };
 
 // --- COMPONENTE PRINCIPAL DOCUMENT PREVIEW ---
-const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, settings, isEditable = true, onSettingsChange }) => {
+const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, settings, template, isEditable = true, onSettingsChange, onEvaluationChange }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [evaluation, setEvaluation] = useState<EvaluationContent>(initialEvaluation);
   const [parsedSections, setParsedSections] = useState<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
   
-  // Estado para gestión de imágenes
   const [isGeneratingImage, setIsGeneratingImage] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeImageUploadIndex, setActiveImageUploadIndex] = useState<number | null>(null);
 
-  // Estado para gestión de matemática (Extendida para todos los campos)
   const [activeMathBlock, setActiveMathBlock] = useState<{
     sourceType: 'section-content' | 'section-title' | 'setting' | 'root' | 'indicator';
-    key?: string;     // Para settings (schoolName) o root (title)
-    index?: number;   // Para sections o indicators
+    key?: string;
+    index?: number;
     start: number;
     end: number;
     cleanLatex: string;
@@ -278,7 +277,14 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     setEvaluation(initialEvaluation);
   }, [initialEvaluation]);
 
-  // Parse Markdown to HTML
+  const updateEvaluationState = (updater: EvaluationContent | ((prev: EvaluationContent) => EvaluationContent)) => {
+    setEvaluation(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (onEvaluationChange) onEvaluationChange(next);
+      return next;
+    });
+  };
+
   useEffect(() => {
     const processMarkdown = async () => {
       const promises = evaluation.sections.map(async (sec) => {
@@ -295,7 +301,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     processMarkdown();
   }, [evaluation.sections]);
 
-  // Render MathJax
   const triggerTypeset = useCallback(() => {
     if (typesetTimeoutRef.current) window.clearTimeout(typesetTimeoutRef.current);
     typesetTimeoutRef.current = window.setTimeout(() => {
@@ -322,7 +327,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     };
   };
 
-  // --- DETECCIÓN DE MATEMÁTICA (TEXTAREA) ---
   const handleTextareaCursor = (e: React.SyntheticEvent<HTMLTextAreaElement>, sectionIndex: number) => {
     const textarea = e.currentTarget;
     const cursorPos = textarea.selectionStart;
@@ -352,7 +356,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     }
   };
 
-  // --- DETECCIÓN DE MATEMÁTICA (CONTENT EDITABLE - Headers, Titles) ---
   const handleContentEditableCursor = (
     e: React.SyntheticEvent<HTMLElement> | { currentTarget: HTMLElement }, 
     sourceType: 'setting' | 'root' | 'indicator' | 'section-title',
@@ -362,7 +365,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     const text = el.innerText;
     const caret = getCaretIndex(el);
 
-    // Guardar referencia foco
     lastFocusedRef.current = {
       element: el,
       selectionStart: caret,
@@ -386,13 +388,11 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     }
   };
 
-  // Eventos para ContentEditable
   const contentEditableEvents = (sourceType: 'setting' | 'root' | 'indicator' | 'section-title', keyOrIndex?: string | number) => ({
     onClick: (e: React.SyntheticEvent<HTMLElement>) => handleContentEditableCursor(e, sourceType, keyOrIndex),
     onKeyUp: (e: React.SyntheticEvent<HTMLElement>) => handleContentEditableCursor(e, sourceType, keyOrIndex),
     onFocus: (e: React.FocusEvent<HTMLElement>) => {
       handleFocus(undefined, 'contentEditable')(e);
-      // Hack: persistir el target y chequear contexto tras un breve delay para permitir que el navegador sitúe el cursor
       const target = e.currentTarget;
       setTimeout(() => {
         handleContentEditableCursor({ currentTarget: target }, sourceType, keyOrIndex);
@@ -411,7 +411,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
         onSettingsChange({ ...settings, [field]: finalValue });
         return;
       }
-      setEvaluation(prev => {
+      updateEvaluationState(prev => {
         const next = { ...prev };
         if (field === 'title') next.title = finalValue;
         if (field === 'oa_code') next.oa_code = finalValue;
@@ -426,18 +426,20 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   };
 
   const updateSectionContent = (index: number, newContent: string) => {
-    const newSections = [...evaluation.sections];
-    newSections[index].content = newContent;
-    setEvaluation({ ...evaluation, sections: newSections });
+    updateEvaluationState(prev => {
+        const newSections = [...prev.sections];
+        newSections[index].content = newContent;
+        return { ...prev, sections: newSections };
+    });
   };
 
   const updateSectionImage = (index: number, imageBase64: string | undefined) => {
-    const newSections = [...evaluation.sections];
-    newSections[index].image = imageBase64;
-    setEvaluation({ ...evaluation, sections: newSections });
+    updateEvaluationState(prev => {
+        const newSections = [...prev.sections];
+        newSections[index].image = imageBase64;
+        return { ...prev, sections: newSections };
+    });
   };
-
-  // --- LOGICA MATEMATICA DE INSERCION Y SINCRONIZACION ---
 
   const handleMathSyncUpdate = (newLatex: string) => {
     if (!activeMathBlock) return;
@@ -446,7 +448,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
     const wrapper = isBlock ? '$$' : '$';
     const newFormula = `${wrapper} ${newLatex} ${wrapper}`;
 
-    // Helper para reemplazar texto
     const replaceText = (original: string) => original.substring(0, start) + newFormula + original.substring(end);
 
     if (sourceType === 'section-content' && index !== undefined) {
@@ -462,22 +463,21 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
       // @ts-ignore
       const currentText = evaluation[key] as string;
       // @ts-ignore
-      setEvaluation(prev => ({ ...prev, [key]: replaceText(currentText) }));
+      updateEvaluationState(prev => ({ ...prev, [key]: replaceText(currentText) }));
     }
     else if (sourceType === 'indicator' && index !== undefined) {
       const currentText = evaluation.indicators[index];
       const newInd = [...evaluation.indicators];
       newInd[index] = replaceText(currentText);
-      setEvaluation(prev => ({ ...prev, indicators: newInd }));
+      updateEvaluationState(prev => ({ ...prev, indicators: newInd }));
     }
     else if (sourceType === 'section-title' && index !== undefined) {
       const currentText = evaluation.sections[index].title;
       const newSec = [...evaluation.sections];
       newSec[index].title = replaceText(currentText);
-      setEvaluation(prev => ({ ...prev, sections: newSec }));
+      updateEvaluationState(prev => ({ ...prev, sections: newSec }));
     }
     
-    // Actualizar el bloque activo
     setActiveMathBlock(prev => prev ? {
       ...prev,
       end: start + newFormula.length,
@@ -488,15 +488,12 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   const handleMathInsert = (latex: string) => {
     const lastFocus = lastFocusedRef.current;
     
-    // Caso 1: Sincronización
     if (activeMathBlock) {
       setActiveMathBlock(null);
       return;
     }
 
-    // Caso 2: Inserción normal
     if (!lastFocus || !document.contains(lastFocus.element)) {
-       // Fallback a primera sección si no hay foco
       if (evaluation.sections.length > 0) {
         updateSectionContent(0, evaluation.sections[0].content + "\n" + latex);
       }
@@ -527,12 +524,10 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
       if (!success) {
         element.innerText = element.innerText + latex;
       }
-      // Forzar actualización del estado local del campo editado (trigger blur simulation)
       element.blur(); 
     }
   };
 
-  // --- LOGICA DE IMAGENES Y GESTION ---
   const handleGenerateAIImage = async (index: number) => {
     setIsGeneratingImage(index);
     const section = evaluation.sections[index];
@@ -554,10 +549,8 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
       const reader = new FileReader();
       reader.onloadend = () => {
         const imageResult = reader.result as string;
-
-        // Si el índice apunta a la longitud actual, significa que estamos creando una nueva sección
         if (activeImageUploadIndex === evaluation.sections.length) {
-            setEvaluation(prev => ({
+            updateEvaluationState(prev => ({
             ...prev,
             sections: [
               ...prev.sections,
@@ -571,10 +564,8 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
           }));
            setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
         } else {
-           // Si no, actualizamos la sección existente
            updateSectionImage(activeImageUploadIndex, imageResult);
         }
-
         setActiveImageUploadIndex(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       };
@@ -593,7 +584,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   };
 
   const handleAddSection = () => {
-    setEvaluation(prev => ({
+    updateEvaluationState(prev => ({
       ...prev,
       sections: [...prev.sections, { title: "Pregunta de Desarrollo", content: "Escribe aquí el enunciado...\n\n\n\n**Respuesta:** ____________________", weight: "3 pts" }]
     }));
@@ -601,7 +592,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   };
 
   const handleAddMultipleChoice = () => {
-    setEvaluation(prev => ({
+    updateEvaluationState(prev => ({
       ...prev,
       sections: [...prev.sections, { title: "Selección Múltiple", content: "Escribe aquí el enunciado...\n\na) Alt A\nb) Alt B\nc) Alt C\nd) Alt D", weight: "2 pts" }]
     }));
@@ -609,7 +600,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   };
   
   const handleAddImageSection = () => {
-    // Apuntamos al índice "siguiente" para indicar creación
     setActiveImageUploadIndex(evaluation.sections.length);
     if (fileInputRef.current) {
       fileInputRef.current.click();
@@ -618,11 +608,106 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
 
   const handleDeleteSection = (index: number) => {
     if(window.confirm("¿Eliminar pregunta?")) {
-      setEvaluation(prev => ({ ...prev, sections: prev.sections.filter((_, i) => i !== index) }));
+      updateEvaluationState(prev => ({ ...prev, sections: prev.sections.filter((_, i) => i !== index) }));
     }
   };
 
   const editableStyles = "focus:outline-none focus:bg-indigo-50/50 hover:bg-slate-50 rounded px-1 transition-colors cursor-text border border-transparent focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100";
+
+  const renderHeader = () => {
+    const layout = template?.headerLayout || 'simple';
+    const logo = template?.logoUrl;
+    const align = template?.schoolInfoAlignment || 'left';
+    
+    const SchoolInfo = (
+      <div className={`flex-1 text-${align} w-full`}>
+        <h3 
+          contentEditable={isEditable} suppressContentEditableWarning 
+          onBlur={handleValidation(settings.schoolName, 'schoolName')}
+          {...contentEditableEvents('setting', 'schoolName')}
+          className={`font-bold text-xl uppercase leading-tight ${isEditable ? editableStyles : ""}`}
+          style={{ color: template?.primaryColor || '#4f46e5' }}
+        >{settings.schoolName}</h3>
+        <div className="mt-2 space-y-1">
+          <p className="text-[10px] font-bold text-slate-600">
+            <span className="text-slate-400 uppercase tracking-widest mr-2">Docente:</span>
+            <span 
+              contentEditable={isEditable} suppressContentEditableWarning 
+              onBlur={handleValidation(settings.teacherName, 'teacherName')} 
+              {...contentEditableEvents('setting', 'teacherName')}
+              className={editableStyles}
+            >{settings.teacherName}</span>
+          </p>
+          <p className="text-[10px] font-bold text-slate-600">
+            <span className="text-slate-400 uppercase tracking-widest mr-2">Asignatura:</span>
+            <span 
+              contentEditable={isEditable} suppressContentEditableWarning 
+              onBlur={handleValidation(settings.subject, 'subject')} 
+              {...contentEditableEvents('setting', 'subject')}
+              className={editableStyles}
+            >{settings.subject}</span>
+          </p>
+        </div>
+      </div>
+    );
+
+    const LogoImg = logo ? <img src={logo} alt="Logo" className="h-20 object-contain mx-auto" /> : null;
+
+    if (layout === 'logo-left') {
+      return (
+        <div className="flex items-center gap-6 border-b-2 pb-6 mb-8" style={{ borderColor: template?.primaryColor }}>
+           <div className="w-24 shrink-0">{LogoImg}</div>
+           {SchoolInfo}
+        </div>
+      );
+    }
+    if (layout === 'logo-right') {
+      return (
+        <div className="flex items-center gap-6 border-b-2 pb-6 mb-8" style={{ borderColor: template?.primaryColor }}>
+           {SchoolInfo}
+           <div className="w-24 shrink-0">{LogoImg}</div>
+        </div>
+      );
+    }
+    if (layout === 'logo-center') {
+      return (
+        <div className="flex flex-col items-center gap-4 border-b-2 pb-6 mb-8 text-center" style={{ borderColor: template?.primaryColor }}>
+           <div className="w-24">{LogoImg}</div>
+           {SchoolInfo}
+        </div>
+      );
+    }
+    if (layout === 'double-column') {
+       return (
+         <div className="flex justify-between items-start border-b-2 pb-4 mb-8" style={{ borderColor: template?.primaryColor }}>
+            <div className="flex flex-col gap-2">
+               {logo && <img src={logo} alt="Logo" className="h-12 object-contain w-auto self-start" />}
+               <h3 className="font-bold text-lg leading-tight" style={{ color: template?.primaryColor }}>{settings.schoolName}</h3>
+            </div>
+            <div className="text-right text-xs font-medium text-slate-600">
+               <p>{settings.teacherName}</p>
+               <p>{settings.subject}</p>
+               <p className="mt-2">Fecha: ______________</p>
+            </div>
+         </div>
+       );
+    }
+
+    return (
+      <div className={`flex flex-col sm:flex-row justify-between items-start border-b-2 pb-6 mb-8 gap-4 sm:gap-0`} style={{ borderColor: template?.primaryColor || '#4f46e5' }}>
+        {SchoolInfo}
+        <div className="w-full sm:w-auto ml-0 sm:ml-4 flex justify-end">
+             <table className="border-collapse border-2 border-slate-800 text-[10px] w-full sm:w-32 bg-white">
+                <tbody>
+                  <tr><td className="border border-slate-800 p-1 font-bold bg-slate-100 uppercase w-1/2 sm:w-auto">Ideal</td><td className="border border-slate-800 p-1 text-center font-bold">40</td></tr>
+                  <tr><td className="border border-slate-800 p-1 font-bold bg-white uppercase">Obt.</td><td className="border border-slate-800 p-1"></td></tr>
+                  <tr><td className="border border-slate-800 p-1 font-bold text-white uppercase" style={{ backgroundColor: template?.primaryColor || '#1e3a8a' }}>Nota</td><td className="border border-slate-800 p-1"></td></tr>
+                </tbody>
+             </table>
+          </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6 relative">
@@ -639,6 +724,10 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
       <div 
         ref={containerRef}
         className={`relative bg-white mx-auto text-slate-900 w-[210mm] min-h-[297mm] p-[15mm] sm:p-[20mm] shadow-2xl print:shadow-none print:p-[15mm] print:w-full print:m-0 ${settings.fontSize} rounded-3xl print:rounded-none latex-style`} 
+        style={{ 
+           fontFamily: template?.fontFamily || 'Inter',
+           border: template?.showBorder ? `1px solid ${template.primaryColor}` : 'none'
+        }}
         id="printable-eval"
       >
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 no-print">
@@ -650,75 +739,40 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
           </button>
         </div>
 
-        {/* --- CABECERA --- */}
-        <div className={`flex flex-col sm:flex-row justify-between items-start border-b-2 pb-6 mb-8 gap-4 sm:gap-0 ${settings.headerColor.includes('text-slate-900') ? 'border-slate-800' : 'border-indigo-600'}`}>
-          <div className="flex-1 text-left w-full sm:w-auto">
-            <h3 
-              contentEditable={isEditable} suppressContentEditableWarning 
-              onBlur={handleValidation(settings.schoolName, 'schoolName')}
-              {...contentEditableEvents('setting', 'schoolName')}
-              className={`font-bold text-xl uppercase leading-tight text-indigo-900 ${isEditable ? editableStyles : ""}`}
-            >{settings.schoolName}</h3>
-            <div className="mt-2 space-y-1">
-              <p className="text-[10px] font-bold text-slate-600">
-                <span className="text-slate-400 uppercase tracking-widest mr-2">Docente:</span>
-                <span 
-                  contentEditable={isEditable} suppressContentEditableWarning 
-                  onBlur={handleValidation(settings.teacherName, 'teacherName')} 
-                  {...contentEditableEvents('setting', 'teacherName')}
-                  className={editableStyles}
-                >{settings.teacherName}</span>
-              </p>
-              <p className="text-[10px] font-bold text-slate-600">
-                <span className="text-slate-400 uppercase tracking-widest mr-2">Asignatura:</span>
-                <span 
-                  contentEditable={isEditable} suppressContentEditableWarning 
-                  onBlur={handleValidation(settings.subject, 'subject')} 
-                  {...contentEditableEvents('setting', 'subject')}
-                  className={editableStyles}
-                >{settings.subject}</span>
-              </p>
+        {renderHeader()}
+
+        {template?.headerLayout !== 'double-column' && (
+          <div className="mb-10 p-4 border border-slate-200 rounded-xl bg-slate-50/30 flex gap-8">
+            <div className="flex-1 border-b border-slate-300 flex justify-between items-end pb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</span>
+            </div>
+            <div className="w-1/3 border-b border-slate-300 flex justify-between items-end pb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha</span>
             </div>
           </div>
-          
-          <div className="w-full sm:w-auto ml-0 sm:ml-4 flex justify-end">
-             <table className="border-collapse border-2 border-slate-800 text-[10px] w-full sm:w-32 bg-white">
-                <tbody>
-                  <tr><td className="border border-slate-800 p-1 font-bold bg-slate-100 uppercase w-1/2 sm:w-auto">Ideal</td><td className="border border-slate-800 p-1 text-center font-bold">40</td></tr>
-                  <tr><td className="border border-slate-800 p-1 font-bold bg-white uppercase">Obt.</td><td className="border border-slate-800 p-1"></td></tr>
-                  <tr><td className="border border-slate-800 p-1 font-bold bg-indigo-900 text-white uppercase">Nota</td><td className="border border-slate-800 p-1"></td></tr>
-                </tbody>
-             </table>
-          </div>
-        </div>
+        )}
 
-        {/* --- DATOS ESTUDIANTE --- */}
-        <div className="mb-10 p-4 border border-slate-200 rounded-xl bg-slate-50/30 flex gap-8">
-          <div className="flex-1 border-b border-slate-300 flex justify-between items-end pb-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</span>
-          </div>
-          <div className="w-1/3 border-b border-slate-300 flex justify-between items-end pb-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha</span>
-          </div>
-        </div>
-
-        {/* --- TÍTULO --- */}
         <div className="text-center mb-10">
           <h1 
             contentEditable={isEditable} suppressContentEditableWarning 
             onBlur={handleValidation(evaluation.title, 'title')} 
             {...contentEditableEvents('root', 'title')}
-            className={`text-2xl sm:text-3xl font-bold text-slate-900 uppercase tracking-tight mb-2 ${isEditable ? editableStyles : ""}`}
+            className={`text-2xl sm:text-3xl font-bold uppercase tracking-tight mb-2 ${isEditable ? editableStyles : ""}`}
+            style={{ color: template?.primaryColor }}
           >{evaluation.title}</h1>
-          <span className="inline-block px-3 py-1 bg-indigo-900 text-white rounded text-[9px] font-bold tracking-[0.2em] uppercase">Evaluación Sumativa</span>
+          <span className="inline-block px-3 py-1 text-white rounded text-[9px] font-bold tracking-[0.2em] uppercase" style={{ backgroundColor: template?.primaryColor || '#312e81' }}>Evaluación Sumativa</span>
         </div>
 
-        {/* --- CURRICULUM --- */}
-        <div className="mb-8 border-l-4 border-indigo-600 bg-indigo-50/20 p-6 rounded-r-xl">
+        <div className="mb-8 border-l-4 bg-slate-50 p-6 rounded-r-xl" style={{ borderColor: template?.primaryColor || '#4f46e5' }}>
           <div className="mb-4">
-            <h5 className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-1">Objetivo de Aprendizaje</h5>
+            <h5 className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: template?.primaryColor }}>Objetivo de Aprendizaje</h5>
             <p className="text-sm font-medium text-slate-800 text-justify">
-              <span className="font-bold mr-2">{evaluation.oa_code}</span>
+              <span 
+                className={`font-bold mr-2 ${isEditable ? editableStyles : ""}`}
+                contentEditable={isEditable} suppressContentEditableWarning 
+                onBlur={handleValidation(evaluation.oa_code, 'oa_code')}
+                {...contentEditableEvents('root', 'oa_code')}
+              >{evaluation.oa_code}</span>
               <span 
                 contentEditable={isEditable} suppressContentEditableWarning 
                 onBlur={handleValidation(evaluation.oa_description, 'oa_description')}
@@ -743,7 +797,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
           </div>
         </div>
         
-        {/* --- TABLA PONDERACION --- */}
         <div className="mb-10 rounded-xl border border-slate-200 print-avoid-break overflow-hidden">
            <div className="w-full overflow-x-auto">
              <table className="w-full text-left text-xs min-w-[300px] sm:min-w-full">
@@ -767,7 +820,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
                          onChange={(e) => {
                            const n = [...evaluation.sections];
                            n[idx].weight = e.target.value;
-                           setEvaluation({...evaluation, sections: n});
+                           updateEvaluationState({...evaluation, sections: n});
                          }}
                        />
                      </td>
@@ -778,7 +831,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
            </div>
         </div>
 
-        {/* --- SECCIONES DINÁMICAS --- */}
         <div className="space-y-12">
           {evaluation.sections.map((section, index) => (
             <div key={index} className="print-avoid-break group/section relative">
@@ -790,12 +842,11 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
                   onBlur={(e) => {
                     const n = [...evaluation.sections];
                     n[index].title = e.currentTarget.innerText;
-                    setEvaluation({...evaluation, sections: n});
+                    updateEvaluationState({...evaluation, sections: n});
                   }}
                   {...contentEditableEvents('section-title', index)}
                 >{section.title}</h3>
                 
-                {/* BOTONES DE EDICIÓN (SOLO MODO EDICION) */}
                 {isEditable && (
                   <div className="flex gap-2 no-print opacity-100 sm:opacity-0 sm:group-hover/section:opacity-100 transition-opacity">
                     <button 
@@ -829,7 +880,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
               </div>
 
               <div className="space-y-4">
-                {/* RENDERIZADO DE IMAGEN */}
                 {section.image && (
                   <div className="relative group max-w-md mx-auto my-4">
                      <img src={section.image} alt="Referencia visual" className="rounded-xl border border-slate-200 shadow-sm w-full object-contain max-h-64" />
@@ -855,10 +905,9 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
                       onClick={(e) => handleTextareaCursor(e, index)}
                       onKeyUp={(e) => handleTextareaCursor(e, index)}
                       onSelect={(e) => handleTextareaCursor(e, index)}
-                      className={`w-full p-4 bg-slate-50 rounded-xl border focus:ring-4 outline-none text-sm font-mono text-slate-700 min-h-[150px] transition-all mb-4 leading-relaxed text-justify ${activeMathBlock?.sourceType === 'section-content' && activeMathBlock.index === index ? 'border-emerald-400 ring-emerald-50/50' : 'border-slate-200 focus:border-indigo-400 focus:ring-indigo-50/50'}`}
+                      className={`w-full p-4 bg-slate-50 rounded-xl border focus:ring-4 outline-none text-sm font-mono text-slate-700 min-h-[150px] transition-all mb-4 leading-relaxed text-justify whitespace-pre-wrap ${activeMathBlock?.sourceType === 'section-content' && activeMathBlock.index === index ? 'border-emerald-400 ring-emerald-50/50' : 'border-slate-200 focus:border-indigo-400 focus:ring-indigo-50/50'}`}
                       placeholder="Escribe aquí el contenido. Haz clic sobre una fórmula $...$ para editarla visualmente..."
                     />
-                    {/* Preview en vivo debajo del editor */}
                     <div className="p-6 rounded-xl border border-dashed border-slate-200 bg-white">
                        <div className="flex items-center gap-2 mb-3">
                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -881,10 +930,8 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
           ))}
         </div>
         
-        {/* BOTONES AGREGAR SECCIÓN (SOLO MODO EDICION) */}
         {isEditable && (
           <div className="no-print mt-12 mb-8 flex flex-col sm:flex-row justify-center gap-4 pb-8 border-b-2 border-dashed border-slate-200">
-            {/* Botón Desarrollo */}
             <button 
               onClick={handleAddSection}
               className="group flex items-center justify-center gap-3 px-6 py-3 bg-white border-2 border-indigo-100 text-indigo-600 rounded-2xl font-bold text-sm hover:border-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm hover:shadow-lg active:scale-95"
@@ -897,7 +944,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
               Pregunta Desarrollo
             </button>
 
-            {/* Botón Selección Múltiple */}
             <button 
               onClick={handleAddMultipleChoice}
               className="group flex items-center justify-center gap-3 px-6 py-3 bg-white border-2 border-emerald-100 text-emerald-600 rounded-2xl font-bold text-sm hover:border-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-sm hover:shadow-lg active:scale-95"
@@ -910,7 +956,6 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
               Pregunta Alternativas
             </button>
 
-            {/* Botón Insertar Imagen */}
             <button 
               onClick={handleAddImageSection}
               className="group flex items-center justify-center gap-3 px-6 py-3 bg-white border-2 border-amber-100 text-amber-600 rounded-2xl font-bold text-sm hover:border-amber-600 hover:bg-amber-600 hover:text-white transition-all shadow-sm hover:shadow-lg active:scale-95"
