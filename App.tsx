@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Grade, Strand, AssessmentType, OA, DocumentSettings, EvaluationContent, AssessmentTemplate } from './types';
 import { CURRICULUM_OAS } from './constants';
@@ -28,6 +27,7 @@ const App: React.FC = () => {
   const [isFileProtocol, setIsFileProtocol] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [hasBackup, setHasBackup] = useState(false);
 
   // Default Template Initialization
   const [currentTemplate, setCurrentTemplate] = useState<AssessmentTemplate>({
@@ -45,6 +45,14 @@ const App: React.FC = () => {
     if (window.location.protocol === 'file:') {
       setIsFileProtocol(true);
       setShowHelp(true);
+    }
+  }, []);
+
+  // Verificar backup al iniciar
+  useEffect(() => {
+    const backup = localStorage.getItem('evalmat_backup');
+    if (backup) {
+      setHasBackup(true);
     }
   }, []);
 
@@ -92,6 +100,31 @@ const App: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  const handleRestoreBackup = () => {
+    try {
+      const backup = localStorage.getItem('evalmat_backup');
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (parsed.evaluation) {
+          setEvaluation(parsed.evaluation);
+          
+          // Intentar sincronizar selectores si es posible (opcional)
+          const foundOA = CURRICULUM_OAS.find(oa => oa.code === parsed.evaluation.oa_code);
+          if (foundOA) {
+             setGrade(foundOA.grade);
+             setStrand(foundOA.strand);
+             setSelectedOAId(foundOA.id);
+          }
+        }
+        if (parsed.settings) setSettings(parsed.settings);
+        showToast("Sesión restaurada correctamente");
+        setHasBackup(false);
+      }
+    } catch (e) {
+      showToast("Error al restaurar el borrador", "error");
+    }
   };
 
   const handleGenerate = async () => {
@@ -165,6 +198,7 @@ const App: React.FC = () => {
           teacherName: settings.teacherName,
           subject: settings.subject,
           grade: grade,
+          date: new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }),
           oa_code: evaluation.oa_code,
           oa_description: evaluation.oa_description,
           indicators: evaluation.indicators,
@@ -423,6 +457,39 @@ const App: React.FC = () => {
           <div className={`${toast.type === 'success' ? 'bg-indigo-600' : 'bg-rose-600'} text-white px-8 py-4 rounded-2xl shadow-2xl font-black text-sm uppercase tracking-widest`}>
             {toast.message}
           </div>
+        </div>
+      )}
+
+      {/* BANNER DE RESTAURACIÓN DE BACKUP */}
+      {hasBackup && !evaluation && (
+        <div className="bg-emerald-50 border-b border-emerald-100 p-4 sticky top-0 z-50 animate-in slide-in-from-top duration-300">
+           <div className="container mx-auto max-w-7xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                 <div className="bg-white p-2 rounded-lg shadow-sm text-emerald-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                 </div>
+                 <div>
+                    <p className="text-sm font-bold text-emerald-800">Se encontró un borrador guardado</p>
+                    <p className="text-xs text-emerald-600">¿Deseas continuar trabajando en tu evaluación anterior?</p>
+                 </div>
+              </div>
+              <div className="flex gap-2">
+                 <button 
+                   onClick={() => { localStorage.removeItem('evalmat_backup'); setHasBackup(false); }}
+                   className="px-4 py-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 rounded-lg transition-colors"
+                 >
+                   Descartar
+                 </button>
+                 <button 
+                   onClick={handleRestoreBackup}
+                   className="px-6 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-emerald-700 transition-all shadow-md active:scale-95"
+                 >
+                   Restaurar Trabajo
+                 </button>
+              </div>
+           </div>
         </div>
       )}
 

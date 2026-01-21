@@ -203,5 +203,6 @@ export const ASSESSMENT_DESCRIPTIONS: Record<string, string> = {
   'Guía de Trabajo Integradora': 'Secuencia que transita por habilidades de modelamiento y resolución de problemas.',
   'Evaluación Diagnóstica': 'Exploración de conocimientos previos y prerrequisitos del nivel anterior.',
   'Rúbrica de Desempeño': 'Matriz detallada para evaluar procesos y razonamiento matemático.',
-  'Escala de Apreciación / Lista de Cotejo': 'Observación de conductas, actitudes y habilidades procedimentales.'
+  'Escala de Apreciación / Lista de Cotejo': 'Observación de conductas, actitudes y habilidades procedimentales.',
+  'Aprendizaje Basado en Proyectos (ABP)': 'Experiencia articulada en torno a una pregunta desafiante, producto público y fases de investigación.',
 };

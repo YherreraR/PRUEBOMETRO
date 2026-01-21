@@ -26,6 +26,7 @@ export enum AssessmentType {
   Diagnostic = 'Evaluación Diagnóstica',
   Rubric = 'Rúbrica de Desempeño',
   Checklist = 'Escala de Apreciación / Lista de Cotejo',
+  Project = 'Aprendizaje Basado en Proyectos (ABP)',
 }
 
 export interface OA {

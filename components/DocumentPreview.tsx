@@ -17,11 +17,6 @@ declare global {
   interface Window {
     MathJax: any;
   }
-  namespace JSX {
-    interface IntrinsicElements {
-      'math-field': any;
-    }
-  }
 }
 
 // --- UTILIDAD: Obtener posición del cursor en ContentEditable ---
@@ -84,6 +79,9 @@ interface VisualBuilderProps {
 const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex, onSyncUpdate }) => {
   const mfRef = useRef<any>(null);
   const [currentLatex, setCurrentLatex] = useState("");
+
+  // Workaround for Custom Element TS error: cast the tag name to any
+  const MathField = 'math-field' as any;
 
   // Sincronización desde el texto hacia el editor visual
   useEffect(() => {
@@ -195,7 +193,7 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
       
       <div className="flex gap-3 items-stretch">
         <div className="flex-1 relative group">
-           <math-field 
+           <MathField 
              ref={mfRef} 
              style={{ 
                width: '100%', 
@@ -214,7 +212,7 @@ const VisualMathBuilder: React.FC<VisualBuilderProps> = ({ onInsert, syncedLatex
                 }
              }}
              placeholder="Escribe fórmula (ej: 1/2)..."
-           ></math-field>
+           ></MathField>
            {isSyncing && (
              <div className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold text-emerald-600 uppercase bg-emerald-100 px-2 py-0.5 rounded-full pointer-events-none">
                <span>Live</span>
@@ -420,6 +418,11 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
           next.indicators = [...next.indicators];
           next.indicators[index] = finalValue;
         }
+        if (field === 'section-title' && index !== undefined) {
+          const newSections = [...next.sections];
+          newSections[index].title = finalValue;
+          next.sections = newSections;
+        }
         return next;
       });
     }
@@ -586,7 +589,11 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   const handleAddSection = () => {
     updateEvaluationState(prev => ({
       ...prev,
-      sections: [...prev.sections, { title: "Pregunta de Desarrollo", content: "Escribe aquí el enunciado...\n\n\n\n**Respuesta:** ____________________", weight: "3 pts" }]
+      sections: [...prev.sections, { 
+        title: "Pregunta de Desarrollo", 
+        content: "Redacta aquí el problema matemático o pregunta...\n\n\n**Respuesta:**\n\n_________________________________________________________\n\n_________________________________________________________", 
+        weight: "3 pts" 
+      }]
     }));
     setTimeout(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }), 100);
   };
@@ -732,10 +739,17 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
       >
         <div className="absolute top-4 right-4 z-50 flex items-center gap-2 no-print">
           {saveStatus === 'saved' && (
-            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">¡Guardado!</span>
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100 animate-in fade-in zoom-in duration-300">¡Guardado!</span>
           )}
-          <button onClick={handleLocalSave} className="bg-white text-slate-500 hover:text-indigo-600 border border-slate-200 p-2 rounded-full shadow-sm hover:shadow-md transition-all" title="Guardar borrador">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+          <button 
+            onClick={handleLocalSave} 
+            className="flex items-center gap-2 bg-white text-slate-600 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 px-4 py-2 rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 group" 
+            title="Guardar borrador en el navegador"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 group-hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+            <span className="text-xs font-bold uppercase tracking-wide">Guardar Progreso</span>
           </button>
         </div>
 
@@ -839,11 +853,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
                 <h3 
                   className={`text-lg font-bold text-slate-800 flex-1 ${isEditable ? editableStyles : ""}`}
                   contentEditable={isEditable} suppressContentEditableWarning
-                  onBlur={(e) => {
-                    const n = [...evaluation.sections];
-                    n[index].title = e.currentTarget.innerText;
-                    updateEvaluationState({...evaluation, sections: n});
-                  }}
+                  onBlur={handleValidation(section.title, 'section-title', index)}
                   {...contentEditableEvents('section-title', index)}
                 >{section.title}</h3>
                 
