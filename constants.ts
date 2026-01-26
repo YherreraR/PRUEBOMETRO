@@ -199,10 +199,14 @@ export const CURRICULUM_OAS: OA[] = [
 ];
 
 export const ASSESSMENT_DESCRIPTIONS: Record<string, string> = {
+  'Prueba Sumativa': 'Evaluación formal de cierre de proceso con calificación al libro.',
+  'Evaluación de Unidad': 'Instrumento integrador que abarca múltiples objetivos de una unidad temática.',
+  'Ensayo SIMCE': 'Formato estandarizado con selección múltiple enfocado en habilidades cognitivas.',
+  'Aprendizaje Basado en Problemas (ABP-Prob)': 'Resolución de una situación problemática compleja abierta.',
+  'Aprendizaje Basado en Proyectos (ABP-Proy)': 'Experiencia articulada en torno a un producto público y fases de investigación.',
+  'Evaluación de Habilidades': 'Foco exclusivo en Modelar, Argumentar, Representar y Resolver Problemas.',
   'Ticket de Salida (Formativa)': 'Actividad breve de cierre focalizada en un indicador específico de logro.',
-  'Guía de Trabajo Integradora': 'Secuencia que transita por habilidades de modelamiento y resolución de problemas.',
   'Evaluación Diagnóstica': 'Exploración de conocimientos previos y prerrequisitos del nivel anterior.',
   'Rúbrica de Desempeño': 'Matriz detallada para evaluar procesos y razonamiento matemático.',
   'Escala de Apreciación / Lista de Cotejo': 'Observación de conductas, actitudes y habilidades procedimentales.',
-  'Aprendizaje Basado en Proyectos (ABP)': 'Experiencia articulada en torno a una pregunta desafiante, producto público y fases de investigación.',
 };

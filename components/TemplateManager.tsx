@@ -14,7 +14,7 @@ const DEFAULT_TEMPLATE: AssessmentTemplate = {
   name: 'Estándar EvaluApp',
   headerLayout: 'simple',
   primaryColor: '#4f46e5', // indigo-600
-  fontFamily: 'Inter',
+  fontFamily: 'Century Gothic', // ACTUALIZADO A CENTURY GOTHIC
   showBorder: false,
   schoolInfoAlignment: 'left'
 };
@@ -296,6 +296,22 @@ PREGUNTAS / ÍTEMS (El núcleo de la prueba):
                     />
                     <span className="text-xs text-slate-500 font-mono">{currentTemplate.primaryColor}</span>
                   </div>
+              </div>
+
+              {/* Selector de Fuente (Ahora incluye Century Gothic) */}
+              <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Tipografía</label>
+                  <select 
+                     value={currentTemplate.fontFamily}
+                     onChange={(e) => updateField('fontFamily', e.target.value)}
+                     className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
+                  >
+                     <option value="Inter">Inter (Moderna)</option>
+                     <option value="Arial">Arial (Estándar)</option>
+                     <option value="Century Gothic">Century Gothic (Elegante)</option>
+                     <option value="Times New Roman">Times New Roman (Formal)</option>
+                     <option value="Calibri">Calibri (Suave)</option>
+                  </select>
               </div>
 
               {/* Opciones Extra */}

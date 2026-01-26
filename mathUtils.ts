@@ -56,7 +56,7 @@ export const processMathForWord = (content: string): string => {
   });
 
   // 2. Reemplazar matemática en línea $...$
-  // Usamos una regex que evita falsos positivos con precios (ej: $ 500)
+  // Usamos una regex que evita falsos positivos con precios (ej: $1.000, $ 500)
   // Busca $...$ donde el contenido no empieza con espacio ni es un número solo
   result = result.replace(/\$([^$\n]+?)\$/g, (match, tex) => {
     // Validación simple para ignorar precios probables (ej: $1.000, $ 500)
@@ -74,6 +74,47 @@ export const processMathForWord = (content: string): string => {
     } catch(e) { 
       // Si falla en línea, devolvemos el original para no ser intrusivos, o un span de error sutil
       return `<span style="color: red;">$${tex}$</span>`; 
+    }
+  });
+
+  return result;
+};
+
+/**
+ * Parsea el contenido mixto (Texto + LaTeX) y lo separa en un array de objetos
+ * para que la librería 'docx' pueda generar nodos TextRun o Math.
+ */
+export const splitTextAndMath = (content: string): Array<{ type: 'text' | 'math' | 'break', value: string }> => {
+  if (!content) return [];
+  const normalized = cleanLatex(content);
+  
+  // Separamos por bloques $$...$$, en línea $...$ y saltos de línea
+  // El regex captura los delimitadores para mantenerlos en el array de resultados
+  const regex = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|\n)/g;
+  
+  const parts = normalized.split(regex);
+  const result: Array<{ type: 'text' | 'math' | 'break', value: string }> = [];
+
+  parts.forEach(part => {
+    if (!part) return;
+
+    if (part === '\n') {
+      result.push({ type: 'break', value: '' });
+    } else if (part.startsWith('$$') && part.endsWith('$$')) {
+      // Bloque matemático
+      result.push({ type: 'math', value: part.slice(2, -2).trim() });
+    } else if (part.startsWith('$') && part.endsWith('$')) {
+      // Matemática en línea
+      // Validación extra para no confundir dinero $500
+      const inner = part.slice(1, -1);
+      if (/^\s?\d+([.,]\d+)?$/.test(inner.trim())) {
+        result.push({ type: 'text', value: part }); // Es dinero, tratar como texto
+      } else {
+        result.push({ type: 'math', value: inner.trim() });
+      }
+    } else {
+      // Texto normal (puede contener Markdown básico que limpiaremos)
+      result.push({ type: 'text', value: part });
     }
   });
 

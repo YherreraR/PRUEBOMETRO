@@ -18,15 +18,20 @@ export enum Strand {
   Data = 'Datos y Probabilidades',
   AlgebraFunctions = 'Álgebra y Funciones',
   ProbStats = 'Probabilidad y Estadística',
+  Global = 'Evaluación General (Todos los Ejes)'
 }
 
 export enum AssessmentType {
+  Summative = 'Prueba Sumativa',
+  Unit = 'Evaluación de Unidad',
+  Simce = 'Ensayo SIMCE',
+  ProblemBased = 'Aprendizaje Basado en Problemas (ABP-Prob)',
+  Project = 'Aprendizaje Basado en Proyectos (ABP-Proy)',
+  Skills = 'Evaluación de Habilidades',
   ExitTicket = 'Ticket de Salida (Formativa)',
-  Quiz = 'Guía de Trabajo Integradora',
   Diagnostic = 'Evaluación Diagnóstica',
   Rubric = 'Rúbrica de Desempeño',
   Checklist = 'Escala de Apreciación / Lista de Cotejo',
-  Project = 'Aprendizaje Basado en Proyectos (ABP)',
 }
 
 export interface OA {
@@ -43,7 +48,9 @@ export interface DocumentSettings {
   subject: string;
   showInstructions: boolean;
   fontSize: 'text-xs' | 'text-sm' | 'text-base' | 'text-lg' | 'text-xl';
-  headerColor: string; // Se mantiene por compatibilidad, pero la Template tendrá prioridad en estilos visuales
+  headerColor: string; // Se mantiene por compatibilidad
+  headerImage?: string; // Nueva propiedad para la imagen del encabezado
+  showInfoWithHeader?: boolean; // Mostrar texto (Colegio, Prof) aunque haya imagen
 }
 
 export interface GroundingSource {
@@ -79,7 +86,7 @@ export interface AssessmentTemplate {
   logoUrl?: string; // Base64 del logo del colegio
   docxFile?: string; // Base64 del archivo .docx subido por el usuario
   primaryColor: string;
-  fontFamily: 'Inter' | 'Arial' | 'Times New Roman' | 'Calibri';
+  fontFamily: 'Inter' | 'Arial' | 'Times New Roman' | 'Calibri' | 'Century Gothic';
   showBorder: boolean; // Borde alrededor de la página
   schoolInfoAlignment: 'left' | 'center' | 'right';
 }

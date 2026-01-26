@@ -57,13 +57,75 @@ export async function generateEvaluation(
         * Fase 4: Presentación Pública y Evaluación. Cómo mostrarán lo aprendido.
       - En cada fase, detalla qué hacen los estudiantes y qué hacen las matemáticas.
     `;
-  } else {
+  } else if (type === AssessmentType.ProblemBased) {
     specificInstructions = `
-      ESTRUCTURA PARA PRUEBAS Y GUÍAS (Evaluación Sumativa/Formativa):
-      - Ítems de Selección Múltiple: Plantea un enunciado claro y 4 alternativas. Las 3 incorrectas (distractores) deben basarse en errores conceptuales comunes del nivel (ej: error de signo, error de operación inversa) y ser plausibles.
-      - Ítems de Desarrollo: Deben exigir mostrar el procedimiento, argumentar la respuesta o modelar una situación.
-      - Resolución de Problemas: Incluye problemas en contextos reales, variados y significativos para el estudiante (no solo ejercicios mecánicos).
-      - Progresión: Organiza los ítems por nivel de complejidad cognitiva (Recordar -> Aplicar -> Analizar).
+      ESTRUCTURA PARA APRENDIZAJE BASADO EN PROBLEMAS (ABP-Prob):
+      - SITUACIÓN PROBLEMÁTICA: Describe una situación compleja, abierta y realista que no tenga una solución obvia.
+      - CONEXIÓN CURRICULAR: El problema debe requerir obligatoriamente el uso del OA seleccionado para ser resuelto.
+      - ETAPAS (Sections):
+        1. Entender el Problema: Preguntas para que el alumno identifique qué sabe y qué necesita saber.
+        2. Planificar: Espacio para proponer estrategias matemáticas.
+        3. Ejecutar: Espacio para los cálculos y modelamiento.
+        4. Verificar y Comunicar: Validar si la respuesta tiene sentido en el contexto y comunicarla.
+    `;
+  } else if (type === AssessmentType.Simce) {
+    if (strand === Strand.Global) {
+      specificInstructions = `
+        ESTRUCTURA TIPO SIMCE GLOBAL (TODOS LOS EJES):
+        - Esta evaluación debe cubrir TODO el currículum del nivel ${grade}.
+        - Distribución OBLIGATORIA de preguntas (Total ~15-20 ítems):
+          * Números y Operaciones: ~35% de las preguntas.
+          * Geometría y Medición: ~30% de las preguntas.
+          * Datos y Probabilidades: ~20% de las preguntas.
+          * Álgebra y Patrones: ~15% de las preguntas.
+        - FORMATO: Ítems de Selección Múltiple (A, B, C, D) rigurosos.
+        - SECCIONES:
+          Crea secciones separadas por Eje Temático (ej: "I. Números", "II. Geometría", etc.).
+      `;
+    } else {
+      specificInstructions = `
+        ESTRUCTURA TIPO SIMCE (Eje Específico):
+        - FORMATO: Principalmente ítems de Selección Múltiple (A, B, C, D) con justificación de distractores en tu pensamiento interno (no visibles para el alumno).
+        - HABILIDADES: Distribuye las preguntas equilibrando:
+          * Conocimiento (20%)
+          * Aplicación (40%)
+          * Razonamiento (40%)
+        - CONTEXTO: Usa contextos breves pero significativos (tablas, gráficos, situaciones cotidianas).
+        - ESTRUCTURA DE SECCIONES:
+          1. Preguntas de Selección Múltiple (Generar al menos 8).
+          2. Pregunta de Desarrollo (Respuesta Abierta) que requiera Argumentar y Comunicar.
+      `;
+    }
+  } else if (type === AssessmentType.Summative || type === AssessmentType.Unit) {
+    specificInstructions = `
+      ESTRUCTURA OBLIGATORIA PARA PRUEBA SUMATIVA / UNIDAD:
+      
+      1. SELECCIÓN DE INDICADORES: Selecciona los 3 o 4 indicadores más representativos del OA.
+      
+      2. GENERACIÓN DE ÍTEMS (Regla 2x1): 
+         - Para CADA indicador seleccionado, genera EXACTAMENTE 2 ejercicios o preguntas de aplicación directa.
+         - Agrupa estos ejercicios en secciones claras (ej: "Ítem I: [Nombre Indicador]").
+      
+      3. RESOLUCIÓN DE PROBLEMAS (Regla final):
+         - Agrega una sección final titulada "Resolución de Problemas".
+         - Esta sección debe contener EXACTAMENTE 3 problemas de planteo contextualizados en situaciones reales.
+         - Los problemas deben integrar los conocimientos de la unidad.
+    `;
+  } else if (type === AssessmentType.Skills) {
+    specificInstructions = `
+      ENFOQUE EN HABILIDADES MATEMÁTICAS:
+      - Diseña actividades que NO sean solo cálculo mecánico.
+      - Sección 1: MODELAR. Traducir situaciones reales a expresiones matemáticas.
+      - Sección 2: ARGUMENTAR Y COMUNICAR. Preguntas de "¿Por qué?", "¿Es correcto afirmar que...?", "Explica tu error".
+      - Sección 3: REPRESENTAR. Moverse entre representaciones (pictórica, simbólica, concreta, tablas, gráficos).
+    `;
+  } else {
+    // Default / Quiz / Exit Ticket
+    specificInstructions = `
+      ESTRUCTURA GENERAL (Evaluación Formativa):
+      - Ítems variados (Selección Múltiple, Completación, Verdadero y Falso con justificación).
+      - Resolución de Problemas: Incluye al menos un problema en contexto real.
+      - Progresión: Organiza los ítems por nivel de complejidad cognitiva.
     `;
   }
 
@@ -87,7 +149,7 @@ export async function generateEvaluation(
     ${specificInstructions}
 
     PROCEDIMIENTO DE GENERACIÓN:
-    1. Usa Google Search para buscar "Indicadores de Evaluación sugeridos OA ${oa.code} matemática Chile" y "Errores frecuentes ${oa.code}" para refinar los criterios y distractores.
+    1. Usa Google Search para buscar "Indicadores de Evaluación sugeridos OA ${oa.code} matemática Chile", "Errores frecuentes ${oa.code}" y "site:sumoprimero.cl ejercicios ${oa.code}" para enriquecer los ítems con material oficial.
     2. Integra explícitamente el desarrollo del pensamiento crítico.
     
     FORMATO DE SALIDA (JSON):

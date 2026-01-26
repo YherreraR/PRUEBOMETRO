@@ -3,12 +3,13 @@ import { Grade, Strand, AssessmentType, OA, DocumentSettings, EvaluationContent,
 import { CURRICULUM_OAS } from './constants';
 import { generateEvaluation } from './geminiService';
 import { marked } from 'marked'; 
-import { processMathForWord } from './mathUtils';
+import { processMathForWord, splitTextAndMath } from './mathUtils';
 
 // Libraries for Word Generation
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import FileSaver from 'file-saver';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, ImageRun, Math as DocxMath, MathRun } from 'docx';
 
 // Component Imports
 import Header from './components/Header';
@@ -18,8 +19,8 @@ import TemplateManager from './components/TemplateManager';
 
 const App: React.FC = () => {
   const [grade, setGrade] = useState<Grade>(Grade.G7);
+  const [type, setType] = useState<AssessmentType>(AssessmentType.Summative); // Tipo primero
   const [strand, setStrand] = useState<Strand>(Strand.Numbers);
-  const [type, setType] = useState<AssessmentType>(AssessmentType.Quiz);
   const [customContext, setCustomContext] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,16 +29,26 @@ const App: React.FC = () => {
   const [showHelp, setShowHelp] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [hasBackup, setHasBackup] = useState(false);
+  const [selectedOAId, setSelectedOAId] = useState<string>('');
 
-  // Default Template Initialization
+  // Default Template Initialization (Century Gothic)
   const [currentTemplate, setCurrentTemplate] = useState<AssessmentTemplate>({
     id: 'default',
     name: 'Estándar EvaluApp',
     headerLayout: 'simple',
     primaryColor: '#4f46e5',
-    fontFamily: 'Inter',
+    fontFamily: 'Century Gothic',
     showBorder: false,
     schoolInfoAlignment: 'left'
+  });
+
+  const [settings, setSettings] = useState<DocumentSettings>({
+    schoolName: 'Escuela Las Quezadas',
+    teacherName: 'YherreraR MaT',
+    subject: 'Matemática',
+    showInstructions: true,
+    fontSize: 'text-base',
+    headerColor: 'bg-indigo-600',
   });
 
   useEffect(() => {
@@ -45,6 +56,22 @@ const App: React.FC = () => {
     if (window.location.protocol === 'file:') {
       setIsFileProtocol(true);
       setShowHelp(true);
+    }
+    
+    // Cargar datos predeterminados del usuario si existen
+    const savedDefaults = localStorage.getItem('evaluapp_user_defaults');
+    if (savedDefaults) {
+      try {
+        const parsedDefaults = JSON.parse(savedDefaults);
+        setSettings(prev => ({
+          ...prev,
+          schoolName: parsedDefaults.schoolName || prev.schoolName,
+          teacherName: parsedDefaults.teacherName || prev.teacherName,
+          subject: parsedDefaults.subject || prev.subject,
+        }));
+      } catch (e) {
+        console.error("Error cargando defaults", e);
+      }
     }
   }, []);
 
@@ -56,46 +83,67 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Determinar Ejes disponibles según Nivel y Tipo de Evaluación
   const availableStrands = useMemo(() => {
+    let baseStrands: Strand[] = [];
     const isHigherCycle = grade === Grade.G7 || grade === Grade.G8;
+    
     if (isHigherCycle) {
-      return [Strand.Numbers, Strand.AlgebraFunctions, Strand.Geometry, Strand.ProbStats];
+      baseStrands = [Strand.Numbers, Strand.AlgebraFunctions, Strand.Geometry, Strand.ProbStats];
+    } else {
+      baseStrands = [Strand.Numbers, Strand.Algebra, Strand.Geometry, Strand.Measurement, Strand.Data];
     }
-    return [Strand.Numbers, Strand.Algebra, Strand.Geometry, Strand.Measurement, Strand.Data];
-  }, [grade]);
 
+    // Si es SIMCE, agregamos la opción Global al principio
+    if (type === AssessmentType.Simce) {
+      return [Strand.Global, ...baseStrands];
+    }
+
+    return baseStrands;
+  }, [grade, type]);
+
+  // Resetear strand si cambia el nivel o tipo y la selección actual no es válida
   useEffect(() => {
     if (!availableStrands.includes(strand)) {
       setStrand(availableStrands[0]);
     }
-  }, [grade, availableStrands, strand]);
+  }, [grade, type, availableStrands, strand]);
 
+  // Filtrar OAs disponibles
   const filteredOAs = useMemo(() => {
+    if (strand === Strand.Global) {
+      return []; // No hay OAs específicos si es global
+    }
     return CURRICULUM_OAS.filter(oa => oa.grade === grade && oa.strand === strand);
   }, [grade, strand]);
 
-  const [selectedOAId, setSelectedOAId] = useState<string>('');
-
+  // Seleccionar primer OA por defecto si cambia la lista
   useEffect(() => {
-    if (filteredOAs.length > 0) {
-      setSelectedOAId(filteredOAs[0].id);
+    if (strand === Strand.Global) {
+      setSelectedOAId('global-simce');
+    } else if (filteredOAs.length > 0) {
+      // Si el seleccionado actual no está en la lista filtrada, reseteamos al primero
+      if (!filteredOAs.find(oa => oa.id === selectedOAId)) {
+        setSelectedOAId(filteredOAs[0].id);
+      }
     } else {
       setSelectedOAId('');
     }
-  }, [filteredOAs]);
+  }, [filteredOAs, strand]);
 
+  // Obtener objeto OA completo
   const selectedOA = useMemo(() => {
+    if (strand === Strand.Global) {
+      return {
+        id: 'global-simce',
+        code: 'Evaluación Global',
+        description: 'Cobertura curricular completa de todos los ejes temáticos del nivel (Números, Álgebra, Geometría, Datos).',
+        grade: grade,
+        strand: Strand.Global
+      } as OA;
+    }
     return CURRICULUM_OAS.find(oa => oa.id === selectedOAId);
-  }, [selectedOAId]);
-
-  const [settings, setSettings] = useState<DocumentSettings>({
-    schoolName: 'Escuela Las Quezadas',
-    teacherName: 'YherreraR MaT',
-    subject: 'Matemática',
-    showInstructions: true,
-    fontSize: 'text-base',
-    headerColor: 'bg-indigo-600',
-  });
+  }, [selectedOAId, strand, grade]);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -109,14 +157,6 @@ const App: React.FC = () => {
         const parsed = JSON.parse(backup);
         if (parsed.evaluation) {
           setEvaluation(parsed.evaluation);
-          
-          // Intentar sincronizar selectores si es posible (opcional)
-          const foundOA = CURRICULUM_OAS.find(oa => oa.code === parsed.evaluation.oa_code);
-          if (foundOA) {
-             setGrade(foundOA.grade);
-             setStrand(foundOA.strand);
-             setSelectedOAId(foundOA.id);
-          }
         }
         if (parsed.settings) setSettings(parsed.settings);
         showToast("Sesión restaurada correctamente");
@@ -172,204 +212,271 @@ const App: React.FC = () => {
     if (!evaluation) return;
 
     try {
-      // --- OPCIÓN A: PLANTILLA DOCX PERSONALIZADA ---
+      // --- OPCIÓN A: PLANTILLA DOCX PERSONALIZADA (User Template) ---
+      // Usa Docxtemplater. Útil para mantener logos y diseños complejos del usuario.
       if (currentTemplate.docxFile) {
-        // 1. Decodificar Base64 a ArrayBuffer (o binary string para PizZip)
-        const binaryString = window.atob(currentTemplate.docxFile.split(',')[1]);
-        const zip = new PizZip(binaryString);
+        const base64Content = currentTemplate.docxFile.split(',')[1];
+        const binaryString = window.atob(base64Content);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
         
-        // 2. Inicializar Docxtemplater
+        const zip = new PizZip(bytes);
+        
         const doc = new Docxtemplater(zip, {
           paragraphLoop: true,
           linebreaks: true,
+          nullGetter: () => { return ""; }
         });
 
-        // 3. Preparar datos limpios (sin Markdown complejo, ya que docxtemplater básico no soporta HTML/RichText)
-        // Nota: Las fórmulas matemáticas LaTeX ($...$) se pasarán como texto plano para que el usuario las visualice o edite con un plugin en Word.
+        // Limpieza básica. Docxtemplater no soporta MathML nativo fácilmente,
+        // así que enviamos texto limpio.
         const cleanSections = evaluation.sections.map(sec => ({
-           title: sec.title,
-           content: sec.content.replace(/\*\*/g, '').replace(/__/g, ''), // Limpieza básica de Markdown
-           weight: sec.weight
+           title: sec.title || '',
+           content: (sec.content || '').replace(/\*\*/g, '').replace(/__/g, ''), 
+           weight: sec.weight || ''
         }));
 
         const data = {
-          title: evaluation.title,
-          schoolName: settings.schoolName,
-          teacherName: settings.teacherName,
-          subject: settings.subject,
-          grade: grade,
+          title: evaluation.title || 'Evaluación',
+          schoolName: settings.schoolName || '',
+          teacherName: settings.teacherName || '',
+          subject: settings.subject || '',
+          grade: grade || '',
           date: new Date().toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }),
-          oa_code: evaluation.oa_code,
-          oa_description: evaluation.oa_description,
-          indicators: evaluation.indicators,
+          oa_code: evaluation.oa_code || '',
+          oa_description: evaluation.oa_description || '',
+          indicators: evaluation.indicators || [],
           sections: cleanSections
         };
 
-        // 4. Renderizar
-        doc.render(data);
+        try {
+          doc.render(data);
+        } catch (error: any) {
+          console.error("Error en renderizado de plantilla:", error);
+          if (error.properties && error.properties.errors instanceof Array) {
+             const errorMessages = error.properties.errors.map((e: any) => e.properties.explanation).join("\n");
+             alert(`Error en la plantilla Word: ${errorMessages}`);
+          }
+          throw error;
+        }
 
-        // 5. Generar Blob
         const out = doc.getZip().generate({
           type: "blob",
           mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
 
-        // 6. Guardar
-        // Manejar importación de FileSaver que puede ser default function o objeto
         const saveAs = (FileSaver as any).saveAs || FileSaver;
         saveAs(out, `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.docx`);
         showToast("Documento generado con plantilla personalizada (.docx)", "success");
         return;
       }
 
-      // --- OPCIÓN B: GENERACIÓN HTML (FAKE WORD) ---
-      // (Mantiene la fidelidad matemática usando MathML)
+      // --- OPCIÓN B: GENERACIÓN PROFESIONAL CON 'DOCX' LIBRARY (Default) ---
+      // Usa la librería 'docx' para construir el documento desde cero con soporte nativo de Matemáticas.
       
-      const sectionPromises = evaluation.sections.map(async (sec) => {
-        const contentWithMathML = processMathForWord(sec.content);
-        const htmlContent = await marked.parse(contentWithMathML);
-        
-        let imageHtml = '';
-        if (sec.image) {
-          imageHtml = `<div style="text-align: center; margin: 15px 0;"><img src="${sec.image}" style="max-width: 400px; max-height: 300px;" /></div>`;
-        }
+      const children: any[] = [];
+      const documentFont = currentTemplate.fontFamily || 'Century Gothic'; // Forzar Century Gothic si no hay fuente
 
-        return `
-          <div style="margin-bottom: 20px;">
-            <h3 style="color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px;">${sec.title}</h3>
-            ${imageHtml}
-            <div>${htmlContent}</div>
-          </div>
-        `;
-      });
-      
-      const sectionsHtmlArray = await Promise.all(sectionPromises);
-      const sectionsHtml = sectionsHtmlArray.join('');
-
-      let headerHtml = '';
-      const logoImg = currentTemplate.logoUrl ? `<img src="${currentTemplate.logoUrl}" width="80" height="80" />` : '';
-      
-      const schoolInfo = `
-        <p class="meta-item"><strong>${settings.schoolName}</strong></p>
-        <p class="meta-item">Docente: ${settings.teacherName}</p>
-        <p class="meta-item">Asignatura: ${settings.subject} | Curso: ${grade}</p>
-        <p class="meta-item">Fecha: ____________________</p>
-      `;
-
-      if (currentTemplate.headerLayout === 'logo-left') {
-        headerHtml = `
-          <table style="width: 100%; margin-bottom: 20px; border: none;">
-            <tr>
-              <td style="width: 100px; vertical-align: middle; padding-right: 15px;">${logoImg}</td>
-              <td style="vertical-align: middle; text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</td>
-            </tr>
-          </table>
-        `;
-      } else if (currentTemplate.headerLayout === 'logo-right') {
-        headerHtml = `
-          <table style="width: 100%; margin-bottom: 20px; border: none;">
-            <tr>
-              <td style="vertical-align: middle; text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</td>
-              <td style="width: 100px; vertical-align: middle; text-align: right; padding-left: 15px;">${logoImg}</td>
-            </tr>
-          </table>
-        `;
-      } else if (currentTemplate.headerLayout === 'logo-center') {
-        headerHtml = `
-          <div style="text-align: center; margin-bottom: 20px;">
-            <div style="margin-bottom: 10px;">${logoImg}</div>
-            <div>${schoolInfo}</div>
-          </div>
-        `;
-      } else if (currentTemplate.headerLayout === 'double-column') {
-         headerHtml = `
-          <table style="width: 100%; margin-bottom: 20px; border-bottom: 2px solid ${currentTemplate.primaryColor};">
-            <tr>
-              <td style="vertical-align: top;">${logoImg}<br/><strong>${settings.schoolName}</strong></td>
-              <td style="vertical-align: top; text-align: right;">
-                 <p>Prof: ${settings.teacherName}</p>
-                 <p>${grade} | ${settings.subject}</p>
-              </td>
-            </tr>
-          </table>
-        `;
-      } else {
-        headerHtml = `<div class="header-info" style="text-align: ${currentTemplate.schoolInfoAlignment};">${schoolInfo}</div>`;
+      // 0. Imagen de Encabezado (BANNER) - Si existe, reemplaza el encabezado de texto por defecto
+      let hasHeaderImage = false;
+      if (settings.headerImage) {
+        try {
+            const imageParts = settings.headerImage.split(',');
+            if (imageParts.length === 2) {
+                const imageBuffer = Uint8Array.from(atob(imageParts[1]), c => c.charCodeAt(0));
+                children.push(
+                    new Paragraph({
+                        children: [
+                            new ImageRun({
+                                data: imageBuffer,
+                                transformation: { width: 600, height: 150 }, // Tamaño banner aproximado
+                                type: "png"
+                            })
+                        ],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 300 }
+                    })
+                );
+                hasHeaderImage = true;
+            }
+        } catch (e) { console.error("Error agregando banner al docx", e); }
       }
 
-      const pageBorder = currentTemplate.showBorder ? `border: 1px solid ${currentTemplate.primaryColor}; padding: 30px;` : '';
+      // 1. Encabezado de Texto
+      if (!hasHeaderImage) {
+        children.push(
+            new Paragraph({
+            text: settings.schoolName.toUpperCase(),
+            heading: HeadingLevel.HEADING_1,
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 },
+            run: { color: "2E2E2E", bold: true, size: 28, font: documentFont }
+            }),
+            new Paragraph({
+            children: [
+                new TextRun({ text: `Docente: ${settings.teacherName}`, bold: true, font: documentFont }),
+                new TextRun({ text: ` | ${settings.subject} | ${grade}`, break: 0, font: documentFont })
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 }
+            })
+        );
+      } else {
+        children.push(new Paragraph({ text: "", spacing: { after: 200 } }));
+      }
 
-      const docContent = `
-        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
-              xmlns:w='urn:schemas-microsoft-com:office:word' 
-              xmlns:m='http://schemas.microsoft.com/office/2004/12/omml'
-              xmlns='http://www.w3.org/TR/REC-html40'>
-        <head>
-          <meta charset="utf-8">
-          <title>${evaluation.title}</title>
-          <style>
-            body { 
-              font-family: '${currentTemplate.fontFamily}', sans-serif; 
-              font-size: 11pt; 
-              line-height: 1.3; 
-              color: #000;
-              ${pageBorder}
-            }
-            h1 { font-size: 16pt; color: ${currentTemplate.primaryColor}; text-align: center; text-transform: uppercase; margin-bottom: 5px; margin-top: 0; }
-            h2 { font-size: 13pt; color: ${currentTemplate.primaryColor}; margin-top: 15px; border-bottom: 1px solid ${currentTemplate.primaryColor}; padding-bottom: 3px; }
-            h3 { font-size: 11pt; font-weight: bold; color: #333; margin-top: 10px; }
-            p { margin-bottom: 5px; margin-top: 0; }
-            table { border-collapse: collapse; width: 100%; margin: 10px 0; }
-            th, td { border: 1px solid #999; padding: 5px; text-align: left; vertical-align: top; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            .header-info { margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; background-color: #fafafa; }
-            ul { margin-top: 5px; padding-left: 20px; }
-            li { margin-bottom: 3px; }
-          </style>
-        </head>
-        <body>
-          ${headerHtml}
+      // 2. Título de la Evaluación
+      children.push(
+        new Paragraph({
+          text: evaluation.title,
+          heading: HeadingLevel.HEADING_2,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 300 },
+          run: { color: currentTemplate.primaryColor.replace('#', ''), bold: true, size: 32, font: documentFont }
+        })
+      );
 
-          <h1>${evaluation.title}</h1>
-          <p style="text-align: center; font-size: 9pt; color: #666; margin-bottom: 20px;">Instrumento generado con EvaluApp</p>
+      // 3. OA y Descripción
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: "OBJETIVO DE APRENDIZAJE: ", bold: true, font: documentFont }),
+            new TextRun({ text: evaluation.oa_code, bold: true, color: currentTemplate.primaryColor.replace('#', ''), font: documentFont }),
+          ],
+          spacing: { before: 200, after: 100 }
+        }),
+        new Paragraph({
+          text: evaluation.oa_description,
+          spacing: { after: 300 },
+          style: "IntenseQuote",
+          run: { font: documentFont }
+        })
+      );
 
-          <div style="background-color: #f8f9fa; padding: 10px; border-left: 4px solid ${currentTemplate.primaryColor}; margin-bottom: 20px;">
-             <p><strong>Objetivo de Aprendizaje (OA):</strong> ${evaluation.oa_code}</p>
-             <p><em>${evaluation.oa_description}</em></p>
-          </div>
-
-          <h2>Indicadores de Evaluación</h2>
-          <ul>
-            ${evaluation.indicators.map(ind => `<li>${ind}</li>`).join('')}
-          </ul>
-
-          <h2>Desarrollo de la Evaluación</h2>
-          ${sectionsHtml}
-
-          <br/><br/>
-          <hr/>
-          <p style="text-align: center; font-size: 8pt; color: #999;">Fin del documento</p>
-        </body>
-        </html>
-      `;
-
-      const blob = new Blob(['\ufeff', docContent], {
-        type: 'application/msword'
+      // 4. Indicadores
+      children.push(
+        new Paragraph({
+          text: "INDICADORES DE EVALUACIÓN:",
+          heading: HeadingLevel.HEADING_4,
+          spacing: { after: 100 },
+          run: { font: documentFont }
+        })
+      );
+      
+      evaluation.indicators.forEach(ind => {
+        children.push(
+          new Paragraph({
+            text: `• ${ind}`,
+            spacing: { after: 50 },
+            indent: { left: 400 },
+            run: { font: documentFont }
+          })
+        );
       });
-      
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.doc`);
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }, 100);
+      children.push(new Paragraph({ text: "", spacing: { after: 300 } })); // Espacio
 
-      showToast("Evaluación descargada en Word (.doc)", "success");
+      // 5. Secciones (Preguntas) con Matemáticas Nativas
+      evaluation.sections.forEach((sec, idx) => {
+        // Título de la sección
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${idx + 1}. ${sec.title}`, bold: true, size: 24, font: documentFont }),
+              new TextRun({ text: ` (${sec.weight || ''})`, italics: true, size: 20, font: documentFont })
+            ],
+            spacing: { before: 300, after: 150 },
+            border: { bottom: { color: "E0E0E0", space: 1, value: "single", size: 6 } }
+          })
+        );
+
+        // Imagen si existe
+        if (sec.image) {
+          try {
+             const imageParts = sec.image.split(',');
+             if (imageParts.length === 2) {
+                const imageBuffer = Uint8Array.from(atob(imageParts[1]), c => c.charCodeAt(0));
+                children.push(
+                  new Paragraph({
+                    children: [
+                      new ImageRun({
+                        data: imageBuffer,
+                        transformation: { width: 300, height: 200 },
+                        type: "png"
+                      })
+                    ],
+                    alignment: AlignmentType.CENTER,
+                    spacing: { after: 200 }
+                  })
+                );
+             }
+          } catch (e) { console.error("Error agregando imagen al docx", e); }
+        }
+
+        // Contenido con parser de Matemáticas
+        const lines = (sec.content || '').split('\n');
+        
+        lines.forEach(line => {
+          if (!line.trim()) {
+            children.push(new Paragraph({})); 
+            return;
+          }
+
+          const parts = splitTextAndMath(line);
+          const paragraphChildren = parts.map(part => {
+             if (part.type === 'math') {
+                return new DocxMath({
+                   children: [new MathRun(part.value)] // Las fórmulas heredan fuente math, pero el contexto es Century Gothic
+                });
+             } else {
+                const cleanText = part.value.replace(/\*\*/g, '').replace(/__/g, '');
+                return new TextRun({ text: cleanText, font: documentFont });
+             }
+          });
+
+          children.push(
+            new Paragraph({
+              children: paragraphChildren,
+              spacing: { after: 100 }
+            })
+          );
+        });
+      });
+
+      // Crear el documento final con estilos globales
+      const doc = new Document({
+        styles: {
+            default: {
+                document: {
+                    run: {
+                        font: documentFont, // APLICAR GLOBALMENTE CENTURY GOTHIC
+                    },
+                    paragraph: {
+                        run: {
+                            font: documentFont,
+                        }
+                    }
+                },
+                heading1: { run: { font: documentFont, bold: true, size: 28 } },
+                heading2: { run: { font: documentFont, bold: true, size: 32 } },
+                heading4: { run: { font: documentFont, bold: true } },
+            }
+        },
+        sections: [{
+          properties: {},
+          children: children
+        }]
+      });
+
+      // Generar Blob
+      const blob = await Packer.toBlob(doc);
+      
+      const saveAs = (FileSaver as any).saveAs || FileSaver;
+      saveAs(blob, `${evaluation.title.replace(/[^a-z0-9]/gi, '_').substring(0, 40)}.docx`);
+      showToast(`Evaluación generada con fuente ${documentFont}`, "success");
+
     } catch (e) {
       console.error(e);
       showToast("Error al generar el archivo Word", "error");
@@ -525,9 +632,10 @@ const App: React.FC = () => {
               Configuración OA
             </h2>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Nivel</label>
+              
+              {/* 1. SELECCIÓN DE NIVEL */}
+              <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">1. Nivel</label>
                   <select 
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
                     value={grade}
@@ -535,34 +643,11 @@ const App: React.FC = () => {
                   >
                     {Object.values(Grade).map(g => <option key={g} value={g}>{g}</option>)}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Eje Temático</label>
-                  <select 
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
-                    value={strand}
-                    onChange={(e) => setStrand(e.target.value as Strand)}
-                  >
-                    {availableStrands.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
               </div>
 
+              {/* 2. TIPO DE INSTRUMENTO (MOVIDO ARRIBA) */}
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Objetivo de Aprendizaje (OA)</label>
-                <select 
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={selectedOAId}
-                  onChange={(e) => setSelectedOAId(e.target.value)}
-                >
-                  {filteredOAs.map(oa => (
-                    <option key={oa.id} value={oa.id}>{oa.code}: {oa.description.slice(0, 70)}...</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Tipo de Instrumento</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">2. Tipo de Instrumento</label>
                 <select 
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
                   value={type}
@@ -572,8 +657,49 @@ const App: React.FC = () => {
                 </select>
               </div>
 
+              {/* 3. EJE TEMÁTICO (AHORA INCLUYE OPCIÓN GLOBAL PARA SIMCE) */}
+              <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">3. Eje Temático / Unidad</label>
+                  <select 
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                    value={strand}
+                    onChange={(e) => setStrand(e.target.value as Strand)}
+                  >
+                    {availableStrands.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  {type === AssessmentType.Simce && (
+                    <p className="text-[9px] text-slate-400 mt-1 pl-1">
+                      * En modo SIMCE puedes seleccionar "Todos los Ejes" o una unidad específica.
+                    </p>
+                  )}
+              </div>
+
+              {/* 4. OBJETIVOS DE APRENDIZAJE */}
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">4. Objetivos de Aprendizaje (OA)</label>
+                {strand === Strand.Global ? (
+                  <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-700 font-medium flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Cobertura Curricular Completa Seleccionada
+                  </div>
+                ) : (
+                  <select 
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-indigo-500 outline-none"
+                    value={selectedOAId}
+                    onChange={(e) => setSelectedOAId(e.target.value)}
+                  >
+                    {filteredOAs.map(oa => (
+                      <option key={oa.id} value={oa.id}>{oa.code}: {oa.description.slice(0, 70)}...</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* 5. INDICACIONES ESPECIALES */}
               <div className="pt-2">
-                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Contexto Adicional</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">5. Indicaciones Especiales</label>
                 <textarea 
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none min-h-[80px]"
                   placeholder="Ej: Problemas contextualizados en el fútbol..."

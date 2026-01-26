@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { EvaluationContent, DocumentSettings, AssessmentTemplate } from '../types';
 import { marked } from 'marked';
@@ -622,6 +623,41 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
   const editableStyles = "focus:outline-none focus:bg-indigo-50/50 hover:bg-slate-50 rounded px-1 transition-colors cursor-text border border-transparent focus:border-indigo-200 focus:ring-2 focus:ring-indigo-100";
 
   const renderHeader = () => {
+    // Si hay imagen de encabezado
+    if (settings.headerImage) {
+        return (
+            <div className="mb-8">
+                <img 
+                    src={settings.headerImage} 
+                    alt="Encabezado Institucional" 
+                    className="w-full max-h-48 object-contain object-left-top mb-4"
+                />
+                
+                {/* OPCIONAL: Mostrar texto debajo de la imagen si se solicita */}
+                {settings.showInfoWithHeader !== false && (
+                   <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 pb-6 gap-4 sm:gap-0" style={{ borderColor: template?.primaryColor || '#4f46e5' }}>
+                      <div className="flex-1 text-left w-full">
+                        <h3 
+                          className="font-bold text-xl uppercase leading-tight"
+                          style={{ color: template?.primaryColor || '#4f46e5' }}
+                        >{settings.schoolName}</h3>
+                        <div className="mt-2 space-y-1">
+                          <p className="text-[10px] font-bold text-slate-600">
+                            <span className="text-slate-400 uppercase tracking-widest mr-2">Docente:</span>
+                            {settings.teacherName}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-600">
+                            <span className="text-slate-400 uppercase tracking-widest mr-2">Asignatura:</span>
+                            {settings.subject}
+                          </p>
+                        </div>
+                      </div>
+                   </div>
+                )}
+            </div>
+        );
+    }
+
     const layout = template?.headerLayout || 'simple';
     const logo = template?.logoUrl;
     const align = template?.schoolInfoAlignment || 'left';
@@ -755,6 +791,7 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
 
         {renderHeader()}
 
+        {/* DATOS DEL ESTUDIANTE: Ahora se muestra SIEMPRE, incluso si hay imagen de header, a menos que sea doble columna */}
         {template?.headerLayout !== 'double-column' && (
           <div className="mb-10 p-4 border border-slate-200 rounded-xl bg-slate-50/30 flex gap-8">
             <div className="flex-1 border-b border-slate-300 flex justify-between items-end pb-1">
@@ -975,14 +1012,10 @@ const DocumentPreview: React.FC<Props> = ({ evaluation: initialEvaluation, setti
                   <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
                 </svg>
               </span>
-              Insertar Imagen
+              Subir Imagen
             </button>
           </div>
         )}
-
-        <div className="mt-20 pt-8 border-t border-slate-200 text-center">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Generado con EvaluApp • {new Date().getFullYear()}</p>
-        </div>
       </div>
     </div>
   );
